@@ -36,6 +36,8 @@ to quickly create a Cobra application.`,
 	},
 }
 
+// need to see about stopping single machine under cluster and whole cluster
+
 func init() {
 	rootCmd.AddCommand(stopCmd)
 
