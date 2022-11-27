@@ -24,28 +24,29 @@ import (
 // initCmd represents the init command
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Initialize a new machine cluster from yaml",
+	Long: `Initilize a new machine cluster by specifying a machine cluster
+yaml configuring one or more machines, networks and connections.`,
+	Run: doInit,
+}
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("init called")
-	},
+func doInit(cmd *cobra.Command, args []string) {
+	fileName := cmd.Flag("file").Value.String()
+	editFile := cmd.Flag("edit").Value.String()
+	fmt.Println("init command:")
+	fmt.Println("  file: ", fileName)
+	fmt.Println("  edit: ", editFile)
+
+	// check if a cluster of this name is already defined
+	// check if edit is set whether we're a terminal or not
+	// if file, read contents, else read from stdin
+	// launch editor with contents
+	// post-edit attempt to marshal contents into Cluster definition, retry on failure
+	// If cluster.Persistent is set, then write contents to config dir, else call api.AddCluster()
 }
 
 func init() {
 	rootCmd.AddCommand(initCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// initCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// initCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	initCmd.PersistentFlags().StringP("file", "f", "-", "yaml file to import.  If unspecified, use stdin")
+	initCmd.PersistentFlags().BoolP("edit", "e", false, "edit the yaml file inline")
 }
