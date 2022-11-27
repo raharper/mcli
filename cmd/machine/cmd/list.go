@@ -16,6 +16,7 @@ limitations under the License.
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"mcli-v2/pkg/api"
 
@@ -31,39 +32,19 @@ var listCmd = &cobra.Command{
 }
 
 func doList(cmd *cobra.Command, args []string) {
-	fmt.Println("list called")
 	listURL := api.GetAPIURL("clusters")
 	if len(listURL) == 0 {
 		panic("Failed to get API URL for 'clusters' endpoint")
 	}
-	resp, err := rootclient.R().EnableTrace().Get(listURL)
-
-	// Explore response object
-	fmt.Println("Response Info:")
-	fmt.Println("  Error      :", err)
-	fmt.Println("  Status Code:", resp.StatusCode())
-	fmt.Println("  Status     :", resp.Status())
-	fmt.Println("  Proto      :", resp.Proto())
-	fmt.Println("  Time       :", resp.Time())
-	fmt.Println("  Received At:", resp.ReceivedAt())
-	fmt.Println("  Body       :\n", resp)
-	fmt.Println()
-
-	// Explore trace info
-	fmt.Println("Request Trace Info:")
-	ti := resp.Request.TraceInfo()
-	fmt.Println("  DNSLookup     :", ti.DNSLookup)
-	fmt.Println("  ConnTime      :", ti.ConnTime)
-	fmt.Println("  TCPConnTime   :", ti.TCPConnTime)
-	fmt.Println("  TLSHandshake  :", ti.TLSHandshake)
-	fmt.Println("  ServerTime    :", ti.ServerTime)
-	fmt.Println("  ResponseTime  :", ti.ResponseTime)
-	fmt.Println("  TotalTime     :", ti.TotalTime)
-	fmt.Println("  IsConnReused  :", ti.IsConnReused)
-	fmt.Println("  IsConnWasIdle :", ti.IsConnWasIdle)
-	fmt.Println("  ConnIdleTime  :", ti.ConnIdleTime)
-	fmt.Println("  RequestAttempt:", ti.RequestAttempt)
-	fmt.Println("  RemoteAddr    :", ti.RemoteAddr.String())
+	resp, _ := rootclient.R().EnableTrace().Get(listURL)
+	clusters := []api.Cluster{}
+	err := json.Unmarshal(resp.Body(), &clusters)
+	if err != nil {
+		panic("Failed to unmarshal GET on /clusters")
+	}
+	for _, cluster := range clusters {
+		fmt.Println(cluster.Name)
+	}
 }
 
 func init() {
