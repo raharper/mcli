@@ -18,6 +18,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"mcli-v2/pkg/api"
 	"net"
 	"net/http"
@@ -31,6 +32,11 @@ import (
 
 var cfgFile string
 var rootclient *resty.Client
+
+const (
+	petNameWords = 2
+	petNameSep   = "-"
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -57,6 +63,7 @@ func Execute() {
 }
 
 func init() {
+	rand.Seed(time.Now().UTC().UnixNano())
 	cobra.OnInitialize(initConfig)
 
 	// Here you will define your flags and configuration settings.

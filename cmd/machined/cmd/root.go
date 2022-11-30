@@ -142,4 +142,8 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
 	}
+
+	// TODO:
+	// parse the config
+	// for each on-disk cluster, read in the yaml and post the struct
 }

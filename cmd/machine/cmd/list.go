@@ -31,16 +31,24 @@ var listCmd = &cobra.Command{
 	Run:   doList,
 }
 
-func doList(cmd *cobra.Command, args []string) {
+func getClusters() ([]api.Cluster, error) {
+	clusters := []api.Cluster{}
 	listURL := api.GetAPIURL("clusters")
 	if len(listURL) == 0 {
-		panic("Failed to get API URL for 'clusters' endpoint")
+		return clusters, fmt.Errorf("Failed to get API URL for 'clusters' endpoint")
 	}
 	resp, _ := rootclient.R().EnableTrace().Get(listURL)
-	clusters := []api.Cluster{}
 	err := json.Unmarshal(resp.Body(), &clusters)
 	if err != nil {
-		panic("Failed to unmarshal GET on /clusters")
+		return clusters, fmt.Errorf("Failed to unmarshal GET on /clusters")
+	}
+	return clusters, nil
+}
+
+func doList(cmd *cobra.Command, args []string) {
+	clusters, err := getClusters()
+	if err != nil {
+		panic(err)
 	}
 	for _, cluster := range clusters {
 		fmt.Println(cluster.Name)

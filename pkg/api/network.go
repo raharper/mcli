@@ -15,28 +15,10 @@ limitations under the License.
 */
 package api
 
-import (
-	"fmt"
-	"net/http"
-
-	"github.com/gin-gonic/gin"
-)
-
-var clusters = []Cluster{}
-
-func GetClusters(c *gin.Context) {
-	c.IndentedJSON(http.StatusOK, clusters)
-}
-
-func PostClusters(c *gin.Context) {
-	var newCluster Cluster
-
-	if err := c.BindJSON(&newCluster); err != nil {
-		return
-	}
-	clusters = append(clusters, newCluster)
-}
-
-func GetAPIURL(endpoint string) string {
-	return fmt.Sprintf("http://machined/%s", endpoint)
+type NetworkDef struct {
+	Name    string `yaml:"name"`
+	Address string `yaml:"address"`
+	Type    string `yaml:"type"`
+	Nat     bool   `yaml:"nat"`
+	IFName  string
 }
