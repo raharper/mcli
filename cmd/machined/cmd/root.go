@@ -16,9 +16,14 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"mcli-v2/pkg/api"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -38,9 +43,24 @@ machine clusters.`,
 func doServerRun(cmd *cobra.Command, args []string) {
 	conf := &api.MachineDaemonConfig{}
 	ctrl := api.NewController(conf)
-	if err := ctrl.Run(cmd.Context()); err != nil {
-		panic(err)
-	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		if err := ctrl.Run(ctx); err != nil && err != http.ErrServerClosed {
+			panic(err)
+		}
+	}()
+	<-ctx.Done()
+	fmt.Println("machined shutting down gracefully, press Ctrl+C again to force")
+	fmt.Println("machined notifying all clusters to shutdown... (FIXME)")
+	fmt.Printf("machined waiting up to %s seconds\n", "30")
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
+	ctrl.Shutdown(ctx)
+	fmt.Println("machined exiting")
 }
 
 // func doServerRun(cmd *cobra.Command, args []string) {

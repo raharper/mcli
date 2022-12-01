@@ -92,13 +92,12 @@ func (c *Controller) InitClusterController(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) Shutdown() {
+func (c *Controller) Shutdown(ctx context.Context) error {
 	c.wgShutDown.Wait()
-	fmt.Println("machined shutting down gracefully, press Ctrl+C again to force")
-	fmt.Println("machined notifying all clusters to shutdown... (FIXME)")
-	ctx := context.Background()
-	_ = c.Server.Shutdown(ctx)
-	fmt.Println("machined exiting")
+	if err := c.Server.Shutdown(ctx); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
 }
 
 func PathExists(d string) bool {
