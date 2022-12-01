@@ -33,6 +33,7 @@ yaml configuring one or more machines, networks and connections.`,
 }
 
 func doInit(cmd *cobra.Command, args []string) {
+	var err error
 	fileName := cmd.Flag("file").Value.String()
 	// Hi cobra, this is awkward...  why isn't there .Value.Bool()?
 	editFile, _ := cmd.Flags().GetBool("edit")
@@ -50,15 +51,15 @@ func doInit(cmd *cobra.Command, args []string) {
 	fmt.Println("  clusterName:", clusterName)
 
 	// check if a cluster of this name is already defined
-	clusters, err := getClusters()
-	if err != nil {
-		panic(err)
-	}
+	// clusters, err := getClusters()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	if _, err := api.FindClusterByName(clusters, clusterName); err == nil {
-		fmt.Printf("Error: %s\n", err)
-		panic(fmt.Sprintf("Cluster %s already defined", clusterName))
-	}
+	// if _, err := api.FindClusterByName(clusters, clusterName); err == nil {
+	// 	fmt.Printf("Error: %s\n", err)
+	// 	panic(fmt.Sprintf("Cluster %s already defined", clusterName))
+	// }
 
 	newCluster := api.Cluster{Name: clusterName}
 	err = postCluster(newCluster)

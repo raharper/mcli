@@ -16,23 +16,13 @@ limitations under the License.
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"mcli-v2/pkg/api"
-	"net"
-	"net/http"
 	"os"
-	"os/signal"
-	"path/filepath"
-	"syscall"
-	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
-
-const ClusterShutdownTimeoutSeconds = 30 * time.Second
 
 var cfgFile string
 
@@ -45,66 +35,66 @@ machine clusters.`,
 	Run: doServerRun,
 }
 
-func PathExists(d string) bool {
-	_, err := os.Stat(d)
-	if err != nil && os.IsNotExist(err) {
-		return false
-	}
-	return true
-}
-
 func doServerRun(cmd *cobra.Command, args []string) {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	unixSocket := api.APISocketPath()
-	if len(unixSocket) == 0 {
-		panic("Failed to get an API Socket path")
+	conf := &api.MachineDaemonConfig{}
+	ctrl := api.NewController(conf)
+	if err := ctrl.Run(cmd.Context()); err != nil {
+		panic(err)
 	}
-	// mkdir -p on dirname(unixSocet)
-	err := os.MkdirAll(filepath.Dir(unixSocket), 0755)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create directory path to: %s", unixSocket))
-	}
-	// FIXME to check if another machined is running/pidfile?, flock?
-	if PathExists(unixSocket) {
-		os.Remove(unixSocket)
-	}
-
-	fmt.Println("machined service running on: %s", unixSocket)
-	router := gin.Default()
-	router.GET("/clusters", api.GetClusters)
-	router.POST("/clusters", api.PostClusters)
-
-	// re-implement gin.Engine.RunUnix() so we can set the context ourselves
-	listener, err := net.Listen("unix", unixSocket)
-	if err != nil {
-		panic("Failed to create a unix socket listener")
-	}
-	defer listener.Close()
-	defer os.Remove(unixSocket)
-
-	srv := &http.Server{Handler: router.Handler()}
-	go func() {
-		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
-			panic(fmt.Sprintf("Failed to Serve: %s", err))
-		}
-	}()
-
-	<-ctx.Done()
-	// restore default behavior on the interrupt signal and nitify user of
-	// shutdown
-	fmt.Println("machined shutting down gracefully, press Ctrl+C again to force")
-	fmt.Println("machined notifying all clusters to shutdown... (FIXME)")
-	fmt.Printf("machined waiting up to %s seconds\n", ClusterShutdownTimeoutSeconds)
-
-	ctx, cancel := context.WithTimeout(context.Background(), ClusterShutdownTimeoutSeconds)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		panic(fmt.Sprintf("machined forced to shutdown: %s", err))
-	}
-	fmt.Println("machined exiting")
 }
+
+// func doServerRun(cmd *cobra.Command, args []string) {
+// 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+// 	defer stop()
+//
+// 	unixSocket := api.APISocketPath()
+// 	if len(unixSocket) == 0 {
+// 		panic("Failed to get an API Socket path")
+// 	}
+// 	// mkdir -p on dirname(unixSocet)
+// 	err := os.MkdirAll(filepath.Dir(unixSocket), 0755)
+// 	if err != nil {
+// 		panic(fmt.Sprintf("Failed to create directory path to: %s", unixSocket))
+// 	}
+// 	// FIXME to check if another machined is running/pidfile?, flock?
+// 	if PathExists(unixSocket) {
+// 		os.Remove(unixSocket)
+// 	}
+//
+// 	fmt.Println("machined service running on: %s", unixSocket)
+// 	router := gin.Default()
+// 	router.GET("/clusters", api.GetClusters)
+// 	router.POST("/clusters", api.PostClusters)
+//
+// 	// re-implement gin.Engine.RunUnix() so we can set the context ourselves
+// 	listener, err := net.Listen("unix", unixSocket)
+// 	if err != nil {
+// 		panic("Failed to create a unix socket listener")
+// 	}
+// 	defer listener.Close()
+// 	defer os.Remove(unixSocket)
+//
+// 	srv := &http.Server{Handler: router.Handler()}
+// 	go func() {
+// 		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
+// 			panic(fmt.Sprintf("Failed to Serve: %s", err))
+// 		}
+// 	}()
+//
+// 	<-ctx.Done()
+// 	// restore default behavior on the interrupt signal and nitify user of
+// 	// shutdown
+// 	fmt.Println("machined shutting down gracefully, press Ctrl+C again to force")
+// 	fmt.Println("machined notifying all clusters to shutdown... (FIXME)")
+// 	fmt.Printf("machined waiting up to %s seconds\n", ClusterShutdownTimeoutSeconds)
+//
+// 	ctx, cancel := context.WithTimeout(context.Background(), ClusterShutdownTimeoutSeconds)
+// 	defer cancel()
+// 	if err := srv.Shutdown(ctx); err != nil {
+// 		panic(fmt.Sprintf("machined forced to shutdown: %s", err))
+// 	}
+// 	fmt.Println("machined exiting")
+// }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
