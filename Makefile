@@ -4,10 +4,10 @@ BINS := bin/machine bin/machined
 all: $(BINS)
 
 clean:
-	rm -v $(BINS)
+	rm -f -v $(BINS)
 
-bin/machine: cmd/machine/*.go cmd/machine/cmd/*.go
+bin/machine: cmd/machine/*.go cmd/machine/cmd/*.go pkg/api/*.go
 	go build -o $@ cmd/machine/*.go
 
-bin/machined: cmd/machined/*.go cmd/machined/cmd/*.go
+bin/machined: cmd/machined/*.go cmd/machined/cmd/*.go pkg/api/*.go
 	go build -o $@ cmd/machined/*.go
