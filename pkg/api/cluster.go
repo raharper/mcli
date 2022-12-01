@@ -17,6 +17,10 @@ package api
 
 import "fmt"
 
+type ClusterController struct {
+	Clusters []Cluster
+}
+
 type Cluster struct {
 	Type        string        `yaml:"type"`
 	Config      ClusterConfig `yaml:"config"`
@@ -36,9 +40,9 @@ type ClusterConfig struct {
 type VMNicNetLinks map[string]string
 type ConnDef map[string]VMNicNetLinks
 
-func FindClusterByName(clusters []Cluster, clusterName string) (*Cluster, error) {
-	fmt.Printf("FindClusterByName: clusters:%v clusterName: %s\n", clusters, clusterName)
-	for _, cluster := range clusters {
+func (c *ClusterController) GetClusterByName(clusterName string) (*Cluster, error) {
+	fmt.Printf("FindClusterByName: clusters:%v clusterName: %s\n", c.Clusters, clusterName)
+	for _, cluster := range c.Clusters {
 		if cluster.Name == clusterName {
 			fmt.Println("found it")
 			return &cluster, nil
@@ -46,4 +50,16 @@ func FindClusterByName(clusters []Cluster, clusterName string) (*Cluster, error)
 	}
 	fmt.Println("returning")
 	return &Cluster{}, fmt.Errorf("Failed to find cluster with Name: %s", clusterName)
+}
+
+func (c *ClusterController) GetClusters() []Cluster {
+	return c.Clusters
+}
+
+func (c *ClusterController) AddCluster(newCluster Cluster) error {
+	if _, err := c.GetClusterByName(newCluster.Name); err == nil {
+		return fmt.Errorf("Error adding cluster.  Already defined")
+	}
+	c.Clusters = append(c.Clusters, newCluster)
+	return nil
 }

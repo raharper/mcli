@@ -15,10 +15,7 @@ limitations under the License.
 */
 package api
 
-import (
-	"fmt"
-)
-
-func GetAPIURL(endpoint string) string {
-	return fmt.Sprintf("http://machined/%s", endpoint)
+type MachineDaemonConfig struct {
+	ConfigDirectory string
+	DataDirectory   string
 }
