@@ -34,7 +34,7 @@ type Cluster struct {
 type ClusterConfig struct {
 	Machines    []VMDef      `yaml:"machines"`
 	Networks    []NetworkDef `yaml:"networks"`
-	Connections ConnDef      `yaml"connections"`
+	Connections ConnDef      `yaml:"connections"`
 }
 
 type VMNicNetLinks map[string]string
@@ -58,7 +58,7 @@ func (c *ClusterController) GetClusters() []Cluster {
 
 func (c *ClusterController) AddCluster(newCluster Cluster) error {
 	if _, err := c.GetClusterByName(newCluster.Name); err == nil {
-		return fmt.Errorf("Error adding cluster.  Already defined")
+		return fmt.Errorf("Cluster '%s' is already defined", newCluster.Name)
 	}
 	c.Clusters = append(c.Clusters, newCluster)
 	return nil

@@ -17,10 +17,16 @@ package cmd
 
 import (
 	"fmt"
+	"io/ioutil"
 	"mcli-v2/pkg/api"
+	"os"
 
 	petname "github.com/dustinkirkland/golang-petname"
+	"github.com/lxc/lxd/shared"
+	"github.com/lxc/lxd/shared/termios"
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
+	"gopkg.in/yaml.v2"
 )
 
 // initCmd represents the init command
@@ -50,55 +56,66 @@ func doInit(cmd *cobra.Command, args []string) {
 	}
 	fmt.Println("  clusterName:", clusterName)
 
-	// check if a cluster of this name is already defined
-	// clusters, err := getClusters()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// if _, err := api.FindClusterByName(clusters, clusterName); err == nil {
-	// 	fmt.Printf("Error: %s\n", err)
-	// 	panic(fmt.Sprintf("Cluster %s already defined", clusterName))
-	// }
-
-	newCluster := api.Cluster{Name: clusterName}
-	err = postCluster(newCluster)
-	if err != nil {
-		panic(err.Error())
-	}
-
 	// check if edit is set whether we're a terminal or not
 	// if file, read contents, else read from stdin
 	// launch editor with contents
 	// post-edit attempt to marshal contents into Cluster definition, retry on failure
 	// If cluster.Persistent is set, then write contents to config dir, else call api.AddCluster()
+
 	// fmt.Println("Seeing if we need to edit this thing...")
-	// var vmbytes []byte
-	// onTerm := termios.IsTerminal(unix.Stdin)
+	var clusterBytes []byte
+	onTerm := termios.IsTerminal(unix.Stdin)
 
-	// if editFile && !onTerm {
-	// 	panic("Aborting edit since stdin is not a terminal")
-	// }
+	if editFile && !onTerm {
+		panic("Aborting edit since stdin is not a terminal")
+	}
 
-	// if fileName == "" || fileName == "-" {
-	// 	vmbytes, err = ioutil.ReadAll(os.Stdin)
-	// 	if err != nil {
-	// 		panic("Error reading definition from stdin")
-	// 	}
-	// } else {
-	// 	vmbytes, err = os.ReadFile(fileName)
-	// 	if err != nil {
-	// 		panic(fmt.Sprintf("Error reading definition from %s", fileName))
-	// 	}
-	// }
+	if fileName == "" || fileName == "-" {
+		clusterBytes, err = ioutil.ReadAll(os.Stdin)
+		if err != nil {
+			panic("Error reading definition from stdin")
+		}
+	} else {
+		clusterBytes, err = os.ReadFile(fileName)
+		if err != nil {
+			panic(fmt.Sprintf("Error reading definition from %s", fileName))
+		}
+	}
 
-	// if editFile {
-	// 	vmbytes, err = shared.TextEditor("", vmbytes)
-	// 	if err != nil {
-	// 		panic("Error calling editor")
-	// 	}
-	// }
-	// fmt.Printf("Got config:\n%s", string(vmbytes))
+	if editFile {
+		clusterBytes, err = shared.TextEditor("", clusterBytes)
+		if err != nil {
+			panic("Error calling editor")
+		}
+	}
+	fmt.Printf("Got config:\n%s", string(clusterBytes))
+
+	newCluster := api.Cluster{Name: clusterName}
+	for {
+		if err = yaml.Unmarshal(clusterBytes, &newCluster); err == nil {
+			break
+		}
+		if !onTerm {
+			panic(fmt.Sprintf("Error parsing configuration: %s", err))
+		}
+		fmt.Printf("Error parsing yaml: %v\n", err)
+		fmt.Println("Press enter to re-open editor, or ctrl-c to abort")
+		_, err := os.Stdin.Read(make([]byte, 1))
+		if err != nil {
+			panic(fmt.Sprintf("Error reading reply: %s", err))
+		}
+		clusterBytes, err = shared.TextEditor("", clusterBytes)
+		if err != nil {
+			panic(fmt.Sprintf("Error calling editor: %s", err))
+		}
+	}
+	// persist config if not ephemeral
+
+	err = postCluster(newCluster)
+	if err != nil {
+		panic(err.Error())
+	}
+
 }
 
 func postCluster(newCluster api.Cluster) error {
@@ -110,7 +127,7 @@ func postCluster(newCluster api.Cluster) error {
 	if err != nil {
 		return fmt.Errorf("Failed POST to 'clusters' endpoint: %s", err)
 	}
-	fmt.Println(resp.Status())
+	fmt.Printf("%s %s\n", resp, resp.Status())
 	return nil
 }
 
