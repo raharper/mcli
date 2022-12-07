@@ -46,7 +46,8 @@ func (rh *RouteHandler) PostClusters(ctx *gin.Context) {
 	if err := ctx.BindJSON(&newCluster); err != nil {
 		return
 	}
-	if err := rh.c.ClusterController.AddCluster(newCluster); err != nil {
+	conf := rh.c.Config.ConfigDirectory
+	if err := rh.c.ClusterController.AddCluster(newCluster, conf); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}
 }

@@ -46,6 +46,30 @@ func NewController(config *MachineDaemonConfig) *Controller {
 }
 
 func (c *Controller) Run(ctx context.Context) error {
+	// load existing clusters
+	clusterDir := filepath.Join(c.Config.ConfigDirectory, "clusters")
+	if PathExists(clusterDir) {
+		fmt.Println("Loading saved cluster configs...")
+		err := filepath.Walk(clusterDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				clusterConf := filepath.Join(path, "machine.yaml")
+				if PathExists(clusterConf) {
+					newCluster, err := LoadConfig(clusterConf)
+					if err != nil {
+						return err
+					}
+					c.ClusterController.Clusters = append(c.ClusterController.Clusters, newCluster)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
 
 	unixSocket := APISocketPath()
 	if len(unixSocket) == 0 {

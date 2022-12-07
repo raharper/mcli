@@ -15,7 +15,44 @@ limitations under the License.
 */
 package api
 
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
 type MachineDaemonConfig struct {
 	ConfigDirectory string
 	DataDirectory   string
+}
+
+func DefaultMachineDaemonConfig() *MachineDaemonConfig {
+	cfg := MachineDaemonConfig{}
+	udd, err := UserDataDir()
+	if err != nil {
+		panic(fmt.Sprintf("Error getting user data dir: %s", err))
+	}
+	ucd, err := UserConfigDir()
+	if err != nil {
+		panic(fmt.Sprintf("Error getting user config dir: %s", err))
+	}
+	cfg.DataDirectory = filepath.Join(udd, "machine")
+	cfg.ConfigDirectory = filepath.Join(ucd, "machine")
+	return &cfg
+}
+
+func UserDataDir() (string, error) {
+	p, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(p, ".local", "share"), nil
+}
+
+func UserConfigDir() (string, error) {
+	p, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(p, ".config"), nil
 }

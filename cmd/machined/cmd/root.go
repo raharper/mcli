@@ -41,7 +41,7 @@ machine clusters.`,
 }
 
 func doServerRun(cmd *cobra.Command, args []string) {
-	conf := &api.MachineDaemonConfig{}
+	conf := api.DefaultMachineDaemonConfig()
 	ctrl := api.NewController(conf)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

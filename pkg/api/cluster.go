@@ -15,7 +15,14 @@ limitations under the License.
 */
 package api
 
-import "fmt"
+import (
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v2"
+)
 
 type ClusterController struct {
 	Clusters []Cluster
@@ -56,10 +63,55 @@ func (c *ClusterController) GetClusters() []Cluster {
 	return c.Clusters
 }
 
-func (c *ClusterController) AddCluster(newCluster Cluster) error {
+func (c *ClusterController) AddCluster(newCluster Cluster, confDir string) error {
 	if _, err := c.GetClusterByName(newCluster.Name); err == nil {
 		return fmt.Errorf("Cluster '%s' is already defined", newCluster.Name)
 	}
+	if !newCluster.Ephemeral {
+		cluster := &newCluster
+		if err := cluster.SaveConfig(confDir); err != nil {
+			return fmt.Errorf("Could not save '%s' cluster to %q: %s", cluster.Name, cluster.ConfigFile(confDir), err)
+		}
+	}
 	c.Clusters = append(c.Clusters, newCluster)
 	return nil
+}
+
+func (c *Cluster) ConfigFile(confDir string) string {
+	// FIXME: need to decide on the name of this yaml file
+	confPath := filepath.Join(confDir, "clusters", c.Name)
+	configFile := filepath.Join(confPath, "machine.yaml")
+	return configFile
+}
+
+func (c *Cluster) SaveConfig(confDir string) error {
+	configFile := c.ConfigFile(confDir)
+	clustersDir := filepath.Dir(configFile)
+	fmt.Printf("clustersDir: %q configFile: %q\n", clustersDir, configFile)
+	if !PathExists(clustersDir) {
+		if err := os.MkdirAll(clustersDir, 0755); err != nil {
+			return fmt.Errorf("Failed to create clustersDir %q: %s", clustersDir, err)
+		}
+	}
+	contents, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("Failed to marshal cluster config: %s", err)
+	}
+	fmt.Println(string(contents))
+	if err := ioutil.WriteFile(configFile, contents, 0644); err != nil {
+		return fmt.Errorf("Failed write cluster config to '%q': %s", configFile, err)
+	}
+	return nil
+}
+
+func LoadConfig(configFile string) (Cluster, error) {
+	var newCluster Cluster
+	clusterBytes, err := ioutil.ReadFile(configFile)
+	if err != nil {
+		return newCluster, fmt.Errorf("Error reading cluster config file '%q': %s", configFile, err)
+	}
+	if err := yaml.Unmarshal(clusterBytes, &newCluster); err != nil {
+		return newCluster, fmt.Errorf("Error unmarshaling cluster config file %q: %s", configFile, err)
+	}
+	return newCluster, nil
 }
