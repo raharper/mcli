@@ -70,7 +70,7 @@ func doInit(cmd *cobra.Command, args []string) {
 		panic("Aborting edit since stdin is not a terminal")
 	}
 
-	if fileName == "" || fileName == "-" {
+	if fileName == "-" {
 		clusterBytes, err = ioutil.ReadAll(os.Stdin)
 		if err != nil {
 			panic("Error reading definition from stdin")
@@ -133,6 +133,6 @@ func postCluster(newCluster api.Cluster) error {
 
 func init() {
 	rootCmd.AddCommand(initCmd)
-	initCmd.PersistentFlags().StringP("file", "f", "-", "yaml file to import.  If unspecified, use stdin")
+	initCmd.PersistentFlags().StringP("file", "f", "", "yaml file to import.  If unspecified, use stdin")
 	initCmd.PersistentFlags().BoolP("edit", "e", false, "edit the yaml file inline")
 }

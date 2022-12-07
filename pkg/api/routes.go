@@ -16,6 +16,7 @@ limitations under the License.
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -35,6 +36,7 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.GET("/clusters", rh.GetClusters)
 	rh.c.Router.POST("/clusters", rh.PostClusters)
+	rh.c.Router.DELETE("/clusters/:clustername", rh.DeleteClusters)
 }
 
 func (rh *RouteHandler) GetClusters(ctx *gin.Context) {
@@ -49,5 +51,15 @@ func (rh *RouteHandler) PostClusters(ctx *gin.Context) {
 	conf := rh.c.Config.ConfigDirectory
 	if err := rh.c.ClusterController.AddCluster(newCluster, conf); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+}
+
+func (rh *RouteHandler) DeleteClusters(ctx *gin.Context) {
+	clusterName := ctx.Param("clustername")
+	conf := rh.c.Config.ConfigDirectory
+	// TODO refush if cluster status is running, handle --force param
+	err := rh.c.ClusterController.DeleteCluster(clusterName, conf)
+	if err != nil {
+		fmt.Printf("ERROR: Failed to delete cluster '%s': %s\n", clusterName, err)
 	}
 }

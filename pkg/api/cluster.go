@@ -77,6 +77,23 @@ func (c *ClusterController) AddCluster(newCluster Cluster, confDir string) error
 	return nil
 }
 
+func (c *ClusterController) DeleteCluster(clusterName string, confDir string) error {
+	clusters := []Cluster{}
+	for _, cluster := range c.Clusters {
+		if cluster.Name != clusterName {
+			clusters = append(clusters, cluster)
+		} else {
+			err := cluster.RemoveConfig(cluster.ConfigFile(confDir))
+			if err != nil {
+				return fmt.Errorf("Failed to remove cluster config file: %s", err)
+			}
+			fmt.Println("Removed cluster: ", cluster.Name)
+		}
+	}
+	c.Clusters = clusters
+	return nil
+}
+
 func (c *Cluster) ConfigFile(confDir string) string {
 	// FIXME: need to decide on the name of this yaml file
 	confPath := filepath.Join(confDir, "clusters", c.Name)
@@ -114,4 +131,14 @@ func LoadConfig(configFile string) (Cluster, error) {
 		return newCluster, fmt.Errorf("Error unmarshaling cluster config file %q: %s", configFile, err)
 	}
 	return newCluster, nil
+}
+
+func (c *Cluster) RemoveConfig(configFile string) error {
+	if PathExists(configFile) {
+		// remove everything under the cluster dir
+		clustersDir := filepath.Dir(configFile)
+		fmt.Printf("Removing cluster config dir %q\n", clustersDir)
+		return os.RemoveAll(clustersDir)
+	}
+	return nil
 }

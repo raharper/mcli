@@ -61,6 +61,7 @@ func (c *Controller) Run(ctx context.Context) error {
 					if err != nil {
 						return err
 					}
+					fmt.Println("  loaded cluster ", newCluster.Name)
 					c.ClusterController.Clusters = append(c.ClusterController.Clusters, newCluster)
 				}
 			}

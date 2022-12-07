@@ -17,35 +17,36 @@ package cmd
 
 import (
 	"fmt"
+	"mcli-v2/pkg/api"
 
 	"github.com/spf13/cobra"
 )
 
-// deleteCmd represents the delete command
+// deleteCmd represents the list command
 var deleteCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Use:        "delete <cluster_name>",
+	Args:       cobra.MinimumNArgs(1),
+	ArgAliases: []string{"clusterName"},
+	Short:      "delete the specified cluster",
+	Long:       `delete the specified cluster if it exists`,
+	Run:        doDelete,
+}
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("delete called")
-	},
+func doDelete(cmd *cobra.Command, args []string) {
+	clusterName := args[0]
+	endpoint := fmt.Sprintf("clusters/%s", clusterName)
+	deleteURL := api.GetAPIURL(endpoint)
+	if len(deleteURL) == 0 {
+		panic("Failed to get DELETE API URL for 'clusters' endpoint")
+	}
+	resp, err := rootclient.R().EnableTrace().Delete(deleteURL)
+	if err != nil {
+		fmt.Printf("Failed to delete cluster '%s': %s\n", clusterName, err)
+		panic(err)
+	}
+	fmt.Println(resp.Status())
 }
 
 func init() {
 	rootCmd.AddCommand(deleteCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// deleteCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// deleteCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
