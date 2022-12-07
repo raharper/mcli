@@ -17,6 +17,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"mcli-v2/pkg/api"
@@ -121,4 +122,46 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
 	}
+}
+
+// common for all commands
+func getClusters() ([]api.Cluster, error) {
+	clusters := []api.Cluster{}
+	listURL := api.GetAPIURL("clusters")
+	if len(listURL) == 0 {
+		return clusters, fmt.Errorf("Failed to get API URL for 'clusters' endpoint")
+	}
+	resp, _ := rootclient.R().EnableTrace().Get(listURL)
+	err := json.Unmarshal(resp.Body(), &clusters)
+	if err != nil {
+		return clusters, fmt.Errorf("Failed to unmarshal GET on /clusters")
+	}
+	return clusters, nil
+}
+
+func postCluster(newCluster api.Cluster) error {
+	postURL := api.GetAPIURL("clusters")
+	if len(postURL) == 0 {
+		return fmt.Errorf("Failed to get API URL for 'clusters' endpoint")
+	}
+	resp, err := rootclient.R().EnableTrace().SetBody(newCluster).Post(postURL)
+	if err != nil {
+		return fmt.Errorf("Failed POST to 'clusters' endpoint: %s", err)
+	}
+	fmt.Printf("%s %s\n", resp, resp.Status())
+	return nil
+}
+
+func putCluster(newCluster api.Cluster) error {
+	endpoint := fmt.Sprintf("clusters/%s", newCluster.Name)
+	putURL := api.GetAPIURL(endpoint)
+	if len(putURL) == 0 {
+		return fmt.Errorf("Failed to get API PUT URL for 'clusters' endpoint")
+	}
+	resp, err := rootclient.R().EnableTrace().SetBody(newCluster).Put(putURL)
+	if err != nil {
+		return fmt.Errorf("Failed PUT to cluster '%s' endpoint: %s", newCluster.Name, err)
+	}
+	fmt.Printf("%s %s\n", resp, resp.Status())
+	return nil
 }

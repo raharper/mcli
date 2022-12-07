@@ -118,19 +118,6 @@ func doInit(cmd *cobra.Command, args []string) {
 
 }
 
-func postCluster(newCluster api.Cluster) error {
-	postURL := api.GetAPIURL("clusters")
-	if len(postURL) == 0 {
-		return fmt.Errorf("Failed to get API URL for 'clusters' endpoint")
-	}
-	resp, err := rootclient.R().EnableTrace().SetBody(newCluster).Post(postURL)
-	if err != nil {
-		return fmt.Errorf("Failed POST to 'clusters' endpoint: %s", err)
-	}
-	fmt.Printf("%s %s\n", resp, resp.Status())
-	return nil
-}
-
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.PersistentFlags().StringP("file", "f", "", "yaml file to import.  If unspecified, use stdin")

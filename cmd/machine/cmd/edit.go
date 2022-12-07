@@ -17,42 +17,98 @@ package cmd
 
 import (
 	"fmt"
+	"mcli-v2/pkg/api"
+	"os"
 
+	"github.com/lxc/lxd/shared"
+	"github.com/lxc/lxd/shared/termios"
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
+	"gopkg.in/yaml.v2"
 )
 
 // editCmd represents the edit command
 var editCmd = &cobra.Command{
-	Use:   "edit",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("edit called")
-	},
+	Use:        "edit <cluster name>",
+	Args:       cobra.MinimumNArgs(1),
+	ArgAliases: []string{"clusterName"},
+	Short:      "edit a cluster's configuration file",
+	Long:       `Read the cluster configuration into an editor for modification`,
+	Run:        doEdit,
 }
 
 // edit requires one to:
 // - GET the cluster configuration from REST API
 // - render this to a temp file
 // - invoke $EDITOR to allow user to make changes
+//
+// Option 1:
 // - (optionally) before posting, run JSON validator on the new file?
-// - POST the cluster configuration back to API
+// - PATCH/UPDATE the cluster configuration back to API
+//   (and symantically what does that mean if the instance is running)
+//
+// Option 2:
+// - write out changes to config file on disk and not modifying in-memory state
+//   via PATCH/UPDATE operations.
+//
+func doEdit(cmd *cobra.Command, args []string) {
+	clusterName := args[0]
+	clusters, err := getClusters()
+	if err != nil {
+		panic(err)
+	}
+
+	var clusterBytes []byte
+	onTerm := termios.IsTerminal(unix.Stdin)
+	editCluster := &api.Cluster{}
+
+	for _, cluster := range clusters {
+		if cluster.Name == clusterName {
+			editCluster = &cluster
+			break
+		}
+	}
+	if editCluster.Name == "" {
+		panic(fmt.Sprintf("Failed to find cluster '%s'", clusterName))
+	}
+
+	clusterBytes, err = yaml.Marshal(editCluster)
+	if err != nil {
+		panic(fmt.Sprintf("Error marshalling cluster '%s'", clusterName))
+	}
+
+	clusterBytes, err = shared.TextEditor("", clusterBytes)
+	if err != nil {
+		panic("Error calling editor")
+	}
+
+	newCluster := api.Cluster{Name: clusterName}
+	for {
+		if err = yaml.Unmarshal(clusterBytes, &newCluster); err == nil {
+			break
+		}
+		if !onTerm {
+			panic(fmt.Sprintf("Error parsing configuration: %s", err))
+		}
+		fmt.Printf("Error parsing yaml: %v\n", err)
+		fmt.Println("Press enter to re-open editor, or ctrl-c to abort")
+		_, err := os.Stdin.Read(make([]byte, 1))
+		if err != nil {
+			panic(fmt.Sprintf("Error reading reply: %s", err))
+		}
+		clusterBytes, err = shared.TextEditor("", clusterBytes)
+		if err != nil {
+			panic(fmt.Sprintf("Error calling editor: %s", err))
+		}
+	}
+	// persist config if not ephemeral
+
+	err = putCluster(newCluster)
+	if err != nil {
+		panic(err.Error())
+	}
+}
 
 func init() {
 	rootCmd.AddCommand(editCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// editCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// editCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

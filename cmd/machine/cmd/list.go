@@ -16,9 +16,7 @@ limitations under the License.
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"mcli-v2/pkg/api"
 
 	"github.com/spf13/cobra"
 )
@@ -29,20 +27,6 @@ var listCmd = &cobra.Command{
 	Short: "list all of the defined clusters",
 	Long:  `list all of the defined clusters`,
 	Run:   doList,
-}
-
-func getClusters() ([]api.Cluster, error) {
-	clusters := []api.Cluster{}
-	listURL := api.GetAPIURL("clusters")
-	if len(listURL) == 0 {
-		return clusters, fmt.Errorf("Failed to get API URL for 'clusters' endpoint")
-	}
-	resp, _ := rootclient.R().EnableTrace().Get(listURL)
-	err := json.Unmarshal(resp.Body(), &clusters)
-	if err != nil {
-		return clusters, fmt.Errorf("Failed to unmarshal GET on /clusters")
-	}
-	return clusters, nil
 }
 
 func doList(cmd *cobra.Command, args []string) {

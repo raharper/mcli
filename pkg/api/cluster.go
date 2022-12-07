@@ -94,6 +94,25 @@ func (c *ClusterController) DeleteCluster(clusterName string, confDir string) er
 	return nil
 }
 
+func (c *ClusterController) UpdateCluster(updateCluster Cluster, confDir string) error {
+	// FIXME: decide if update will modify the in-memory state (I think yes, but
+	// maybe only the on-disk format if it's running? but what does subsequent
+	// GET return (on-disk or in-memory?)
+	for idx, cluster := range c.Clusters {
+		if cluster.Name == updateCluster.Name {
+			c.Clusters[idx] = updateCluster
+			if !updateCluster.Ephemeral {
+				if err := updateCluster.SaveConfig(confDir); err != nil {
+					return fmt.Errorf("Could not save '%s' cluster to %q: %s", updateCluster.Name, updateCluster.ConfigFile(confDir), err)
+				}
+			}
+			fmt.Printf("Updated cluster '%s'\n", updateCluster.Name)
+			break
+		}
+	}
+	return nil
+}
+
 func (c *Cluster) ConfigFile(confDir string) string {
 	// FIXME: need to decide on the name of this yaml file
 	confPath := filepath.Join(confDir, "clusters", c.Name)
