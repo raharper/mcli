@@ -17,9 +17,21 @@ limitations under the License.
 package api
 
 import (
+	"context"
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
+)
+
+type VMState int
+
+const (
+	VMInit VMState = iota
+	VMStarted
+	VMStopped
+	VMFailed
+	VMCleaned
 )
 
 type VMDef struct {
@@ -160,4 +172,52 @@ func clearAllQemuIndex() {
 	for key := range QemuTypeIndex {
 		delete(QemuTypeIndex, key)
 	}
+}
+
+type VM struct {
+	Ctx    context.Context
+	Cancel context.CancelFunc
+	Config VMDef
+	cmd    *exec.Cmd
+	State  VMState
+}
+
+func newVM(ctx context.Context, vmConfig VMDef) (VM, error) {
+	ctx, cancelFn := context.WithCancel(ctx)
+	return VM{
+		Config: vmConfig,
+		Ctx:    ctx,
+		Cancel: cancelFn,
+		State:  VMInit,
+	}, nil
+}
+
+func (v *VM) Start() error {
+	fmt.Printf("Starting VM:%s\n", v.Config.Name)
+	v.State = VMStarted
+	go func(v *VM) {
+		fmt.Printf("VM:%s running until cancelled\n", v.Config.Name)
+		for {
+			select {
+			case <-v.Ctx.Done():
+				err := v.Ctx.Err()
+				if err != nil {
+					fmt.Printf("Error with VM:%s %s\n", v.Config.Name, err)
+				}
+				fmt.Printf("VM:%s finished\n", v.Config.Name)
+				return
+			}
+		}
+	}(v)
+	return nil
+}
+
+func (v *VM) Stop() error {
+	fmt.Printf("Stopping VM:%s\n", v.Config.Name)
+	fmt.Printf("Called v.Cancel()")
+	v.Cancel()
+	fmt.Printf("Set State to VMStopped")
+	v.State = VMStopped
+	fmt.Printf("returning nil")
+	return nil
 }

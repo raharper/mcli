@@ -35,16 +35,18 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.GET("/clusters", rh.GetClusters)
-	rh.c.Router.POST("/clusters", rh.PostClusters)
-	rh.c.Router.PUT("/clusters/:clustername", rh.UpdateClusters)
-	rh.c.Router.DELETE("/clusters/:clustername", rh.DeleteClusters)
+	rh.c.Router.POST("/clusters", rh.PostCluster)
+	rh.c.Router.PUT("/clusters/:clustername", rh.UpdateCluster)
+	rh.c.Router.DELETE("/clusters/:clustername", rh.DeleteCluster)
+	rh.c.Router.POST("/clusters/:clustername/start", rh.StartCluster)
+	rh.c.Router.POST("/clusters/:clustername/stop", rh.StopCluster)
 }
 
 func (rh *RouteHandler) GetClusters(ctx *gin.Context) {
 	ctx.IndentedJSON(http.StatusOK, rh.c.ClusterController.GetClusters())
 }
 
-func (rh *RouteHandler) PostClusters(ctx *gin.Context) {
+func (rh *RouteHandler) PostCluster(ctx *gin.Context) {
 	var newCluster Cluster
 	if err := ctx.BindJSON(&newCluster); err != nil {
 		return
@@ -55,7 +57,7 @@ func (rh *RouteHandler) PostClusters(ctx *gin.Context) {
 	}
 }
 
-func (rh *RouteHandler) DeleteClusters(ctx *gin.Context) {
+func (rh *RouteHandler) DeleteCluster(ctx *gin.Context) {
 	clusterName := ctx.Param("clustername")
 	conf := rh.c.Config.ConfigDirectory
 	// TODO refuse if cluster status is running, handle --force param
@@ -65,13 +67,54 @@ func (rh *RouteHandler) DeleteClusters(ctx *gin.Context) {
 	}
 }
 
-func (rh *RouteHandler) UpdateClusters(ctx *gin.Context) {
+func (rh *RouteHandler) UpdateCluster(ctx *gin.Context) {
 	var newCluster Cluster
-	if err := ctx.BindJSON(&newCluster); err != nil {
+	if err := ctx.ShouldBindJSON(&newCluster); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	conf := rh.c.Config.ConfigDirectory
 	if err := rh.c.ClusterController.UpdateCluster(newCluster, conf); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+}
+
+func (rh *RouteHandler) StartCluster(ctx *gin.Context) {
+	clusterName := ctx.Param("clustername")
+	var request struct {
+		Status string `json:"status"`
+	}
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if request.Status == "running" {
+		if err := rh.c.ClusterController.StartCluster(clusterName); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+	} else {
+		err := fmt.Errorf("Invalid Start request: '%v;", request)
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+}
+
+func (rh *RouteHandler) StopCluster(ctx *gin.Context) {
+	clusterName := ctx.Param("clustername")
+	var request struct {
+		Status string `json:"status"`
+	}
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if request.Status == "stopped" {
+		if err := rh.c.ClusterController.StopCluster(clusterName); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+	} else {
+		err := fmt.Errorf("Invalid Stop request: '%v;", request)
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 }

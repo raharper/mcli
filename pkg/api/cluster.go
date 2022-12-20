@@ -16,13 +16,24 @@ limitations under the License.
 package api
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"gopkg.in/yaml.v2"
 )
+
+const (
+	ClusterStatusStopped  string = "stopped"
+	ClusterStatusStarting string = "starting"
+	ClusterStatusRunning  string = "running"
+	ClusterStatusStopping string = "stopping"
+)
+
+type StopChannel chan struct{}
 
 type ClusterController struct {
 	Clusters []Cluster
@@ -36,20 +47,23 @@ type Cluster struct {
 	Name        string        `yaml:"name"`
 	Status      string        `yaml:"status"`
 	StatusCode  int64         `yaml:"status_code"`
+	VMCount     sync.WaitGroup
+	State       string
 }
 
 type ClusterConfig struct {
 	Machines    []VMDef      `yaml:"machines"`
 	Networks    []NetworkDef `yaml:"networks"`
 	Connections ConnDef      `yaml:"connections"`
+	Instances   []*VM
 }
 
 type VMNicNetLinks map[string]string
 type ConnDef map[string]VMNicNetLinks
 
-func (c *ClusterController) GetClusterByName(clusterName string) (*Cluster, error) {
-	fmt.Printf("FindClusterByName: clusters:%v clusterName: %s\n", c.Clusters, clusterName)
-	for _, cluster := range c.Clusters {
+func (ctl *ClusterController) GetClusterByName(clusterName string) (*Cluster, error) {
+	fmt.Printf("FindClusterByName: clusters:%v clusterName: %s\n", ctl.Clusters, clusterName)
+	for _, cluster := range ctl.Clusters {
 		if cluster.Name == clusterName {
 			fmt.Println("found it")
 			return &cluster, nil
@@ -59,27 +73,28 @@ func (c *ClusterController) GetClusterByName(clusterName string) (*Cluster, erro
 	return &Cluster{}, fmt.Errorf("Failed to find cluster with Name: %s", clusterName)
 }
 
-func (c *ClusterController) GetClusters() []Cluster {
-	return c.Clusters
+func (ctl *ClusterController) GetClusters() []Cluster {
+	return ctl.Clusters
 }
 
-func (c *ClusterController) AddCluster(newCluster Cluster, confDir string) error {
-	if _, err := c.GetClusterByName(newCluster.Name); err == nil {
+func (ctl *ClusterController) AddCluster(newCluster Cluster, confDir string) error {
+	if _, err := ctl.GetClusterByName(newCluster.Name); err == nil {
 		return fmt.Errorf("Cluster '%s' is already defined", newCluster.Name)
 	}
 	if !newCluster.Ephemeral {
 		cluster := &newCluster
+		cluster.Status = ClusterStatusStopped
 		if err := cluster.SaveConfig(confDir); err != nil {
 			return fmt.Errorf("Could not save '%s' cluster to %q: %s", cluster.Name, cluster.ConfigFile(confDir), err)
 		}
 	}
-	c.Clusters = append(c.Clusters, newCluster)
+	ctl.Clusters = append(ctl.Clusters, newCluster)
 	return nil
 }
 
-func (c *ClusterController) DeleteCluster(clusterName string, confDir string) error {
+func (ctl *ClusterController) DeleteCluster(clusterName string, confDir string) error {
 	clusters := []Cluster{}
-	for _, cluster := range c.Clusters {
+	for _, cluster := range ctl.Clusters {
 		if cluster.Name != clusterName {
 			clusters = append(clusters, cluster)
 		} else {
@@ -90,17 +105,18 @@ func (c *ClusterController) DeleteCluster(clusterName string, confDir string) er
 			fmt.Println("Removed cluster: ", cluster.Name)
 		}
 	}
-	c.Clusters = clusters
+	ctl.Clusters = clusters
 	return nil
 }
 
-func (c *ClusterController) UpdateCluster(updateCluster Cluster, confDir string) error {
+func (ctl *ClusterController) UpdateCluster(updateCluster Cluster, confDir string) error {
 	// FIXME: decide if update will modify the in-memory state (I think yes, but
 	// maybe only the on-disk format if it's running? but what does subsequent
 	// GET return (on-disk or in-memory?)
-	for idx, cluster := range c.Clusters {
+
+	for idx, cluster := range ctl.Clusters {
 		if cluster.Name == updateCluster.Name {
-			c.Clusters[idx] = updateCluster
+			ctl.Clusters[idx] = updateCluster
 			if !updateCluster.Ephemeral {
 				if err := updateCluster.SaveConfig(confDir); err != nil {
 					return fmt.Errorf("Could not save '%s' cluster to %q: %s", updateCluster.Name, updateCluster.ConfigFile(confDir), err)
@@ -113,15 +129,44 @@ func (c *ClusterController) UpdateCluster(updateCluster Cluster, confDir string)
 	return nil
 }
 
-func (c *Cluster) ConfigFile(confDir string) string {
+func (ctl *ClusterController) StartCluster(clusterName string) error {
+	for idx, cluster := range ctl.Clusters {
+		if cluster.Name == clusterName {
+			err := ctl.Clusters[idx].StartCluster()
+			if err != nil {
+				return fmt.Errorf("Could not start '%s' cluster: %s", clusterName, err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("Failed to find cluster '%s', cannot start unknown cluster", clusterName)
+}
+
+func (ctl *ClusterController) StopCluster(clusterName string) error {
+	for idx, cluster := range ctl.Clusters {
+		if cluster.Name == clusterName {
+			err := ctl.Clusters[idx].StopCluster()
+			if err != nil {
+				return fmt.Errorf("Could not stop '%s' cluster: %s", clusterName, err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("Failed to find cluster '%s', cannot stop unknown cluster", clusterName)
+}
+
+//
+// Cluster Functions Below
+//
+func (cls *Cluster) ConfigFile(confDir string) string {
 	// FIXME: need to decide on the name of this yaml file
-	confPath := filepath.Join(confDir, "clusters", c.Name)
+	confPath := filepath.Join(confDir, "clusters", cls.Name)
 	configFile := filepath.Join(confPath, "machine.yaml")
 	return configFile
 }
 
-func (c *Cluster) SaveConfig(confDir string) error {
-	configFile := c.ConfigFile(confDir)
+func (cls *Cluster) SaveConfig(confDir string) error {
+	configFile := cls.ConfigFile(confDir)
 	clustersDir := filepath.Dir(configFile)
 	fmt.Printf("clustersDir: %q configFile: %q\n", clustersDir, configFile)
 	if !PathExists(clustersDir) {
@@ -129,7 +174,7 @@ func (c *Cluster) SaveConfig(confDir string) error {
 			return fmt.Errorf("Failed to create clustersDir %q: %s", clustersDir, err)
 		}
 	}
-	contents, err := yaml.Marshal(c)
+	contents, err := yaml.Marshal(cls)
 	if err != nil {
 		return fmt.Errorf("Failed to marshal cluster config: %s", err)
 	}
@@ -152,12 +197,59 @@ func LoadConfig(configFile string) (Cluster, error) {
 	return newCluster, nil
 }
 
-func (c *Cluster) RemoveConfig(configFile string) error {
+func (cls *Cluster) RemoveConfig(configFile string) error {
 	if PathExists(configFile) {
 		// remove everything under the cluster dir
 		clustersDir := filepath.Dir(configFile)
 		fmt.Printf("Removing cluster config dir %q\n", clustersDir)
 		return os.RemoveAll(clustersDir)
 	}
+	return nil
+}
+
+func (cls *Cluster) StartCluster() error {
+
+	// check if cluster is running, if so return
+	if cls.Status == ClusterStatusRunning || cls.Status == ClusterStatusStarting {
+		return fmt.Errorf("Cluster is already %s", cls.Status)
+	}
+	cls.Status = ClusterStatusStarting
+	for _, vmdef := range cls.Config.Machines {
+		ctx := context.Background()
+		vm, err := newVM(ctx, vmdef)
+		if err != nil {
+			return fmt.Errorf("Failed to create new VM '%s.%s': %s", cls.Name, vmdef.Name, err)
+		}
+		err = vm.Start()
+		if err != nil {
+			return fmt.Errorf("Failed to start VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
+		}
+		fmt.Printf("Cluster.StartCluster, VM instances before append: %d\n", len(cls.Config.Instances))
+		cls.Config.Instances = append(cls.Config.Instances, &vm)
+		fmt.Printf("Cluster.StartCluster, VM instances after  append: %d %v\n", len(cls.Config.Instances), cls.Config.Instances)
+		cls.VMCount.Add(1)
+	}
+	cls.Status = ClusterStatusRunning
+	return nil
+}
+
+func (cls *Cluster) StopCluster() error {
+
+	fmt.Printf("Cluster.StopCluster called on cluster %s, status: %s\n", cls.Name, cls.Status)
+	// check if cluster is running, if so return
+	if cls.Status == ClusterStatusStopped || cls.Status == ClusterStatusStopping {
+		return fmt.Errorf("Cluster is already %s", cls.Status)
+	}
+
+	fmt.Printf("Cluster.StopCluster, VM instances: %d\n", len(cls.Config.Instances))
+	for _, vm := range cls.Config.Instances {
+		fmt.Printf("Cluster.StopCluster, VM instance: %s, calling stop\n", vm.Config.Name)
+		err := vm.Stop()
+		if err != nil {
+			return fmt.Errorf("Failed to stop VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
+		}
+		cls.VMCount.Done()
+	}
+	cls.Status = ClusterStatusStopped
 	return nil
 }

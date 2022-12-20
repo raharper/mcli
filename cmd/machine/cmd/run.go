@@ -17,43 +17,51 @@ package cmd
 
 import (
 	"fmt"
+	"mcli-v2/pkg/api"
 
 	"github.com/spf13/cobra"
 )
 
 // runCmd represents the run command
 var runCmd = &cobra.Command{
-	Use:   "run",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("run called")
-	},
+	Use:        "run <cluster_name>",
+	Args:       cobra.MinimumNArgs(1),
+	ArgAliases: []string{"clusterName"},
+	Short:      "run the specified cluster",
+	Long:       `run the specified cluster if it exists`,
+	Run:        doRun,
 }
 
-// running a cluster requires POST'ing an update to the cluster state
-// which toggles from the 'stopped' state to the 'running' state.
-// Asynchronously the cluster will start, in a separate goroutine spawned by
-// machined, and depending on client flags (blocking/non-blocking) the server
-// will return back an new URL for status on the cluster instance
+// Ideally:
+// 	running a cluster requires POST'ing an update to the cluster state
+// 	which toggles from the 'stopped' state to the 'running' state.
+// 	Asynchronously the cluster will start, in a separate goroutine spawned by
+// 	machined, and depending on client flags (blocking/non-blocking) the server
+// 	will return back an new URL for status on the cluster instance
 //
 // TBD, the affecting the machines in each cluster
+//
+// Currently we now post a request with {'status': 'running'} to start a cluster
+
+func doRun(cmd *cobra.Command, args []string) {
+	clusterName := args[0]
+	var request struct {
+		Status string `json:"status"`
+	}
+	request.Status = "running"
+
+	endpoint := fmt.Sprintf("clusters/%s/start", clusterName)
+	startURL := api.GetAPIURL(endpoint)
+	if len(startURL) == 0 {
+		panic(fmt.Sprintf("Failed to get API URL for 'clusters/%s/start' endpoint", clusterName))
+	}
+	resp, err := rootclient.R().EnableTrace().SetBody(request).Post(startURL)
+	if err != nil {
+		panic(fmt.Sprintf("Failed POST to 'clusters/%s/start' endpoint: %s", clusterName, err))
+	}
+	fmt.Printf("%s %s\n", resp, resp.Status())
+}
 
 func init() {
 	rootCmd.AddCommand(runCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// runCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// runCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

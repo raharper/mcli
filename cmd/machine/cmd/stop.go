@@ -17,37 +17,41 @@ package cmd
 
 import (
 	"fmt"
+	"mcli-v2/pkg/api"
 
 	"github.com/spf13/cobra"
 )
 
 // stopCmd represents the stop command
 var stopCmd = &cobra.Command{
-	Use:   "stop",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("stop called")
-	},
+	Use:        "stop <cluster_name>",
+	Args:       cobra.MinimumNArgs(1),
+	ArgAliases: []string{"clusterName"},
+	Short:      "stop the specified cluster",
+	Long:       `stop the specified cluster if it exists`,
+	Run:        doStop,
 }
 
 // need to see about stopping single machine under cluster and whole cluster
+func doStop(cmd *cobra.Command, args []string) {
+	clusterName := args[0]
+	var request struct {
+		Status string `json:"status"`
+	}
+	request.Status = "stopped"
+
+	endpoint := fmt.Sprintf("clusters/%s/stop", clusterName)
+	stopURL := api.GetAPIURL(endpoint)
+	if len(stopURL) == 0 {
+		panic(fmt.Sprintf("Failed to get API URL for 'clusters/%s/stop' endpoint", clusterName))
+	}
+	resp, err := rootclient.R().EnableTrace().SetBody(request).Post(stopURL)
+	if err != nil {
+		panic(fmt.Sprintf("Failed POST to 'clusters/%s/stop' endpoint: %s", clusterName, err))
+	}
+	fmt.Printf("%s %s\n", resp, resp.Status())
+}
 
 func init() {
 	rootCmd.AddCommand(stopCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// stopCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// stopCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
