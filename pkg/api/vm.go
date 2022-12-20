@@ -214,10 +214,7 @@ func (v *VM) Start() error {
 
 func (v *VM) Stop() error {
 	fmt.Printf("Stopping VM:%s\n", v.Config.Name)
-	fmt.Printf("Called v.Cancel()")
 	v.Cancel()
-	fmt.Printf("Set State to VMStopped")
 	v.State = VMStopped
-	fmt.Printf("returning nil")
 	return nil
 }
