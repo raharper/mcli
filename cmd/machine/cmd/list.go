@@ -17,7 +17,9 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
+	table "github.com/rodaine/table"
 	"github.com/spf13/cobra"
 )
 
@@ -34,11 +36,17 @@ func doList(cmd *cobra.Command, args []string) {
 	if err != nil {
 		panic(err)
 	}
+	tbl := table.New("Name", "Status", "Description")
+	tbl.AddRow("----", "------", "-----------")
 	for _, cluster := range clusters {
-		fmt.Println(cluster.Name)
+		tbl.AddRow(cluster.Name, cluster.Status, cluster.Description)
 	}
+	tbl.Print()
 }
 
 func init() {
 	rootCmd.AddCommand(listCmd)
+	table.DefaultHeaderFormatter = func(format string, vals ...interface{}) string {
+		return strings.ToUpper(fmt.Sprintf(format, vals...))
+	}
 }

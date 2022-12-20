@@ -45,17 +45,16 @@ type Cluster struct {
 	Description string        `yaml:"description"`
 	Ephemeral   bool          `yaml:"ephemeral"`
 	Name        string        `yaml:"name"`
-	Status      string        `yaml:"status"`
-	StatusCode  int64         `yaml:"status_code"`
-	VMCount     sync.WaitGroup
-	State       string
+	Status      string
+	statusCode  int64
+	vmCount     sync.WaitGroup
 }
 
 type ClusterConfig struct {
 	Machines    []VMDef      `yaml:"machines"`
 	Networks    []NetworkDef `yaml:"networks"`
 	Connections ConnDef      `yaml:"connections"`
-	Instances   []*VM
+	instances   []*VM
 }
 
 type VMNicNetLinks map[string]string
@@ -224,10 +223,10 @@ func (cls *Cluster) StartCluster() error {
 		if err != nil {
 			return fmt.Errorf("Failed to start VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
 		}
-		fmt.Printf("Cluster.StartCluster, VM instances before append: %d\n", len(cls.Config.Instances))
-		cls.Config.Instances = append(cls.Config.Instances, &vm)
-		fmt.Printf("Cluster.StartCluster, VM instances after  append: %d %v\n", len(cls.Config.Instances), cls.Config.Instances)
-		cls.VMCount.Add(1)
+		fmt.Printf("Cluster.StartCluster, VM instances before append: %d\n", len(cls.Config.instances))
+		cls.Config.instances = append(cls.Config.instances, &vm)
+		fmt.Printf("Cluster.StartCluster, VM instances after  append: %d %v\n", len(cls.Config.instances), cls.Config.instances)
+		cls.vmCount.Add(1)
 	}
 	cls.Status = ClusterStatusRunning
 	return nil
@@ -241,14 +240,14 @@ func (cls *Cluster) StopCluster() error {
 		return fmt.Errorf("Cluster is already %s", cls.Status)
 	}
 
-	fmt.Printf("Cluster.StopCluster, VM instances: %d\n", len(cls.Config.Instances))
-	for _, vm := range cls.Config.Instances {
+	fmt.Printf("Cluster.StopCluster, VM instances: %d\n", len(cls.Config.instances))
+	for _, vm := range cls.Config.instances {
 		fmt.Printf("Cluster.StopCluster, VM instance: %s, calling stop\n", vm.Config.Name)
 		err := vm.Stop()
 		if err != nil {
 			return fmt.Errorf("Failed to stop VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
 		}
-		cls.VMCount.Done()
+		cls.vmCount.Done()
 	}
 	cls.Status = ClusterStatusStopped
 	return nil
