@@ -55,6 +55,11 @@ func doInit(cmd *cobra.Command, args []string) {
 		clusterName = petname.Generate(petNameWords, petNameSep)
 	}
 	fmt.Println("  clusterName:", clusterName)
+	newCluster := api.Cluster{
+		Name:      clusterName,
+		Ephemeral: true,
+		Status:    api.ClusterStatusStopped,
+	}
 
 	// check if edit is set whether we're a terminal or not
 	// if file, read contents, else read from stdin
@@ -76,9 +81,18 @@ func doInit(cmd *cobra.Command, args []string) {
 			panic("Error reading definition from stdin")
 		}
 	} else {
-		clusterBytes, err = os.ReadFile(fileName)
-		if err != nil {
-			panic(fmt.Sprintf("Error reading definition from %s", fileName))
+		if len(fileName) > 0 {
+			clusterBytes, err = os.ReadFile(fileName)
+			if err != nil {
+				panic(fmt.Sprintf("Error reading definition from %s", fileName))
+			}
+		} else {
+			fmt.Println("No file specified, using defaults..\n")
+			clusterBytes, err = yaml.Marshal(newCluster)
+			if err != nil {
+				panic("Failed reading empty cluster config")
+			}
+			editFile = true
 		}
 	}
 
@@ -90,7 +104,6 @@ func doInit(cmd *cobra.Command, args []string) {
 	}
 	fmt.Printf("Got config:\n%s", string(clusterBytes))
 
-	newCluster := api.Cluster{Name: clusterName}
 	for {
 		if err = yaml.Unmarshal(clusterBytes, &newCluster); err == nil {
 			break

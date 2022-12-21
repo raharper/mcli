@@ -80,9 +80,9 @@ func (ctl *ClusterController) AddCluster(newCluster Cluster, confDir string) err
 	if _, err := ctl.GetClusterByName(newCluster.Name); err == nil {
 		return fmt.Errorf("Cluster '%s' is already defined", newCluster.Name)
 	}
+	newCluster.Status = ClusterStatusStopped
 	if !newCluster.Ephemeral {
 		cluster := &newCluster
-		cluster.Status = ClusterStatusStopped
 		if err := cluster.SaveConfig(confDir); err != nil {
 			return fmt.Errorf("Could not save '%s' cluster to %q: %s", cluster.Name, cluster.ConfigFile(confDir), err)
 		}
