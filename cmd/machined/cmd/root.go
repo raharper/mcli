@@ -56,7 +56,9 @@ func doServerRun(cmd *cobra.Command, args []string) {
 	fmt.Println("machined shutting down gracefully, press Ctrl+C again to force")
 	fmt.Println("machined notifying all clusters to shutdown... (FIXME)")
 	fmt.Printf("machined waiting up to %s seconds\n", "30")
-
+	if err := ctrl.ClusterController.StopClusters(); err != nil {
+		fmt.Printf("Failure during cluster shutdown: %s\n", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 	ctrl.Shutdown(ctx)

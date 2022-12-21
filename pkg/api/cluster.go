@@ -91,12 +91,31 @@ func (ctl *ClusterController) AddCluster(newCluster Cluster, confDir string) err
 	return nil
 }
 
+func (ctl *ClusterController) StopClusters() error {
+	for idx, _ := range ctl.Clusters {
+		cluster := ctl.Clusters[idx]
+		if cluster.IsRunning() {
+			if err := cluster.Stop(); err != nil {
+				fmt.Printf("Error while stopping cluster '%s': %s\n", cluster.Name, err)
+			}
+		}
+	}
+	return nil
+}
+
 func (ctl *ClusterController) DeleteCluster(clusterName string, confDir string) error {
 	clusters := []Cluster{}
-	for _, cluster := range ctl.Clusters {
+	for idx, _ := range ctl.Clusters {
+		cluster := ctl.Clusters[idx]
 		if cluster.Name != clusterName {
 			clusters = append(clusters, cluster)
 		} else {
+			if cluster.IsRunning() {
+				err := cluster.Stop()
+				if err != nil {
+					fmt.Println("Failed stopping cluster, continuing with Delete")
+				}
+			}
 			err := cluster.RemoveConfig(cluster.ConfigFile(confDir))
 			if err != nil {
 				return fmt.Errorf("Failed to remove cluster config file: %s", err)
@@ -131,7 +150,7 @@ func (ctl *ClusterController) UpdateCluster(updateCluster Cluster, confDir strin
 func (ctl *ClusterController) StartCluster(clusterName string) error {
 	for idx, cluster := range ctl.Clusters {
 		if cluster.Name == clusterName {
-			err := ctl.Clusters[idx].StartCluster()
+			err := ctl.Clusters[idx].Start()
 			if err != nil {
 				return fmt.Errorf("Could not start '%s' cluster: %s", clusterName, err)
 			}
@@ -144,7 +163,7 @@ func (ctl *ClusterController) StartCluster(clusterName string) error {
 func (ctl *ClusterController) StopCluster(clusterName string) error {
 	for idx, cluster := range ctl.Clusters {
 		if cluster.Name == clusterName {
-			err := ctl.Clusters[idx].StopCluster()
+			err := ctl.Clusters[idx].Stop()
 			if err != nil {
 				return fmt.Errorf("Could not stop '%s' cluster: %s", clusterName, err)
 			}
@@ -206,11 +225,11 @@ func (cls *Cluster) RemoveConfig(configFile string) error {
 	return nil
 }
 
-func (cls *Cluster) StartCluster() error {
+func (cls *Cluster) Start() error {
 
 	// check if cluster is running, if so return
-	if cls.Status == ClusterStatusRunning || cls.Status == ClusterStatusStarting {
-		return fmt.Errorf("Cluster is already %s", cls.Status)
+	if cls.IsRunning() {
+		return fmt.Errorf("Cluster is already running")
 	}
 	cls.Status = ClusterStatusStarting
 	for _, vmdef := range cls.Config.Machines {
@@ -232,17 +251,17 @@ func (cls *Cluster) StartCluster() error {
 	return nil
 }
 
-func (cls *Cluster) StopCluster() error {
+func (cls *Cluster) Stop() error {
 
-	fmt.Printf("Cluster.StopCluster called on cluster %s, status: %s\n", cls.Name, cls.Status)
-	// check if cluster is running, if so return
-	if cls.Status == ClusterStatusStopped || cls.Status == ClusterStatusStopping {
-		return fmt.Errorf("Cluster is already %s", cls.Status)
+	fmt.Printf("Cluster.Stop called on cluster %s, status: %s\n", cls.Name, cls.Status)
+	// check if cluster is stopped, if so return
+	if !cls.IsRunning() {
+		return fmt.Errorf("Cluster is already stopped")
 	}
 
-	fmt.Printf("Cluster.StopCluster, VM instances: %d\n", len(cls.Config.instances))
+	fmt.Printf("Cluster.Stop, VM instances: %d\n", len(cls.Config.instances))
 	for _, vm := range cls.Config.instances {
-		fmt.Printf("Cluster.StopCluster, VM instance: %s, calling stop\n", vm.Config.Name)
+		fmt.Printf("Cluster.Stop, VM instance: %s, calling stop\n", vm.Config.Name)
 		err := vm.Stop()
 		if err != nil {
 			return fmt.Errorf("Failed to stop VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
@@ -251,4 +270,11 @@ func (cls *Cluster) StopCluster() error {
 	}
 	cls.Status = ClusterStatusStopped
 	return nil
+}
+
+func (cls *Cluster) IsRunning() bool {
+	if cls.Status == ClusterStatusRunning || cls.Status == ClusterStatusStarting {
+		return true
+	}
+	return false
 }
