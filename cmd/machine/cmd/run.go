@@ -17,49 +17,34 @@ package cmd
 
 import (
 	"fmt"
-	"mcli-v2/pkg/api"
 
 	"github.com/spf13/cobra"
 )
 
 // runCmd represents the run command
 var runCmd = &cobra.Command{
-	Use:        "run <cluster_name>",
-	Args:       cobra.MinimumNArgs(1),
+	Use:        "run <cluster_name> <cluster config>",
+	Args:       cobra.MinimumNArgs(2),
 	ArgAliases: []string{"clusterName"},
-	Short:      "run the specified cluster",
-	Long:       `run the specified cluster if it exists`,
+	Short:      "create and start a new cluster",
+	Long:       `create a new cluster from config and start the cluster.`,
 	Run:        doRun,
 }
 
-// Ideally:
-// 	running a cluster requires POST'ing an update to the cluster state
-// 	which toggles from the 'stopped' state to the 'running' state.
-// 	Asynchronously the cluster will start, in a separate goroutine spawned by
-// 	machined, and depending on client flags (blocking/non-blocking) the server
-// 	will return back an new URL for status on the cluster instance
-//
-// TBD, the affecting the machines in each cluster
-//
-// Currently we now post a request with {'status': 'running'} to start a cluster
-
+// Initialize a new cluster from config file and then start it up
 func doRun(cmd *cobra.Command, args []string) {
 	clusterName := args[0]
-	var request struct {
-		Status string `json:"status"`
-	}
-	request.Status = "running"
+	clusterConfig := args[1]
+	editCluster := false
 
-	endpoint := fmt.Sprintf("clusters/%s/start", clusterName)
-	startURL := api.GetAPIURL(endpoint)
-	if len(startURL) == 0 {
-		panic(fmt.Sprintf("Failed to get API URL for 'clusters/%s/start' endpoint", clusterName))
+	// FIXME: handle mismatch between name in arg and value in config file
+	if err := DoCreateCluster(clusterName, clusterConfig, editCluster); err != nil {
+		panic(fmt.Sprintf("Failed to create cluster '%s' from config '%s': %s", clusterName, clusterConfig, err))
 	}
-	resp, err := rootclient.R().EnableTrace().SetBody(request).Post(startURL)
-	if err != nil {
-		panic(fmt.Sprintf("Failed POST to 'clusters/%s/start' endpoint: %s", clusterName, err))
+
+	if err := DoStartCluster(clusterName); err != nil {
+		panic(fmt.Sprintf("Failed to start cluster '%s' from config '%s': %s", clusterName, clusterConfig, err))
 	}
-	fmt.Printf("%s %s\n", resp, resp.Status())
 }
 
 func init() {

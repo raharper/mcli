@@ -39,7 +39,6 @@ yaml configuring one or more machines, networks and connections.`,
 }
 
 func doInit(cmd *cobra.Command, args []string) {
-	var err error
 	fileName := cmd.Flag("file").Value.String()
 	// Hi cobra, this is awkward...  why isn't there .Value.Bool()?
 	editFile, _ := cmd.Flags().GetBool("edit")
@@ -55,11 +54,22 @@ func doInit(cmd *cobra.Command, args []string) {
 		clusterName = petname.Generate(petNameWords, petNameSep)
 	}
 	fmt.Println("  clusterName:", clusterName)
+
+	if err := DoCreateCluster(clusterName, fileName, editFile); err != nil {
+		panic("Failed to create a cluster")
+	}
+}
+
+func DoCreateCluster(clusterName, fileName string, editFile bool) error {
+	var err error
+	var clusterBytes []byte
+	onTerm := termios.IsTerminal(unix.Stdin)
 	newCluster := api.Cluster{
 		Name:      clusterName,
 		Ephemeral: true,
 		Status:    api.ClusterStatusStopped,
 	}
+	fmt.Printf("Creating cluster %s ...\n", clusterName)
 
 	// check if edit is set whether we're a terminal or not
 	// if file, read contents, else read from stdin
@@ -67,30 +77,26 @@ func doInit(cmd *cobra.Command, args []string) {
 	// post-edit attempt to marshal contents into Cluster definition, retry on failure
 	// If cluster.Persistent is set, then write contents to config dir, else call api.AddCluster()
 
-	// fmt.Println("Seeing if we need to edit this thing...")
-	var clusterBytes []byte
-	onTerm := termios.IsTerminal(unix.Stdin)
-
 	if editFile && !onTerm {
-		panic("Aborting edit since stdin is not a terminal")
+		return fmt.Errorf("Aborting edit since stdin is not a terminal")
 	}
 
 	if fileName == "-" {
 		clusterBytes, err = ioutil.ReadAll(os.Stdin)
 		if err != nil {
-			panic("Error reading definition from stdin")
+			return fmt.Errorf("Error reading cluster definition from stdin: %s", err)
 		}
 	} else {
 		if len(fileName) > 0 {
 			clusterBytes, err = os.ReadFile(fileName)
 			if err != nil {
-				panic(fmt.Sprintf("Error reading definition from %s", fileName))
+				return fmt.Errorf("Error reading definition from %s: %s", fileName, err)
 			}
 		} else {
 			fmt.Println("No file specified, using defaults..\n")
 			clusterBytes, err = yaml.Marshal(newCluster)
 			if err != nil {
-				panic("Failed reading empty cluster config")
+				return fmt.Errorf("Failed reading empty cluster config: %s", err)
 			}
 			editFile = true
 		}
@@ -99,7 +105,7 @@ func doInit(cmd *cobra.Command, args []string) {
 	if editFile {
 		clusterBytes, err = shared.TextEditor("", clusterBytes)
 		if err != nil {
-			panic("Error calling editor")
+			return fmt.Errorf("Error calling editor: %s", err)
 		}
 	}
 	fmt.Printf("Got config:\n%s", string(clusterBytes))
@@ -109,26 +115,26 @@ func doInit(cmd *cobra.Command, args []string) {
 			break
 		}
 		if !onTerm {
-			panic(fmt.Sprintf("Error parsing configuration: %s", err))
+			return fmt.Errorf("Error parsing configuration: %s", err)
 		}
 		fmt.Printf("Error parsing yaml: %v\n", err)
 		fmt.Println("Press enter to re-open editor, or ctrl-c to abort")
 		_, err := os.Stdin.Read(make([]byte, 1))
 		if err != nil {
-			panic(fmt.Sprintf("Error reading reply: %s", err))
+			return fmt.Errorf("Error reading reply: %s", err)
 		}
 		clusterBytes, err = shared.TextEditor("", clusterBytes)
 		if err != nil {
-			panic(fmt.Sprintf("Error calling editor: %s", err))
+			fmt.Errorf("Error calling editor: %s", err)
 		}
 	}
 	// persist config if not ephemeral
 
 	err = postCluster(newCluster)
 	if err != nil {
-		panic(err.Error())
+		return fmt.Errorf("Error while POST'ing new cluster config: %s", err)
 	}
-
+	return nil
 }
 
 func init() {
