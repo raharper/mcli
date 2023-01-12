@@ -40,6 +40,7 @@ type ClusterController struct {
 }
 
 type Cluster struct {
+	ctx         context.Context
 	Type        string        `yaml:"type"`
 	Config      ClusterConfig `yaml:"config"`
 	Description string        `yaml:"description"`
@@ -76,17 +77,18 @@ func (ctl *ClusterController) GetClusters() []Cluster {
 	return ctl.Clusters
 }
 
-func (ctl *ClusterController) AddCluster(newCluster Cluster, confDir string) error {
+func (ctl *ClusterController) AddCluster(newCluster Cluster, cfg *MachineDaemonConfig) error {
 	if _, err := ctl.GetClusterByName(newCluster.Name); err == nil {
 		return fmt.Errorf("Cluster '%s' is already defined", newCluster.Name)
 	}
 	newCluster.Status = ClusterStatusStopped
 	if !newCluster.Ephemeral {
 		cluster := &newCluster
-		if err := cluster.SaveConfig(confDir); err != nil {
-			return fmt.Errorf("Could not save '%s' cluster to %q: %s", cluster.Name, cluster.ConfigFile(confDir), err)
+		if err := cluster.SaveConfig(cfg.ConfigDirectory); err != nil {
+			return fmt.Errorf("Could not save '%s' cluster to %q: %s", cluster.Name, cluster.ConfigFile(cfg.ConfigDirectory), err)
 		}
 	}
+	newCluster.ctx = cfg.GetConfigContext()
 	ctl.Clusters = append(ctl.Clusters, newCluster)
 	return nil
 }
@@ -103,7 +105,7 @@ func (ctl *ClusterController) StopClusters() error {
 	return nil
 }
 
-func (ctl *ClusterController) DeleteCluster(clusterName string, confDir string) error {
+func (ctl *ClusterController) DeleteCluster(clusterName string, cfg *MachineDaemonConfig) error {
 	clusters := []Cluster{}
 	for idx, _ := range ctl.Clusters {
 		cluster := ctl.Clusters[idx]
@@ -116,7 +118,7 @@ func (ctl *ClusterController) DeleteCluster(clusterName string, confDir string) 
 					fmt.Println("Failed stopping cluster, continuing with Delete")
 				}
 			}
-			err := cluster.RemoveConfig(cluster.ConfigFile(confDir))
+			err := cluster.RemoveConfig(cluster.ConfigFile(cfg.ConfigDirectory))
 			if err != nil {
 				return fmt.Errorf("Failed to remove cluster config file: %s", err)
 			}
@@ -127,17 +129,18 @@ func (ctl *ClusterController) DeleteCluster(clusterName string, confDir string) 
 	return nil
 }
 
-func (ctl *ClusterController) UpdateCluster(updateCluster Cluster, confDir string) error {
+func (ctl *ClusterController) UpdateCluster(updateCluster Cluster, cfg *MachineDaemonConfig) error {
 	// FIXME: decide if update will modify the in-memory state (I think yes, but
 	// maybe only the on-disk format if it's running? but what does subsequent
 	// GET return (on-disk or in-memory?)
 
 	for idx, cluster := range ctl.Clusters {
 		if cluster.Name == updateCluster.Name {
+			updateCluster.ctx = cfg.GetConfigContext()
 			ctl.Clusters[idx] = updateCluster
 			if !updateCluster.Ephemeral {
-				if err := updateCluster.SaveConfig(confDir); err != nil {
-					return fmt.Errorf("Could not save '%s' cluster to %q: %s", updateCluster.Name, updateCluster.ConfigFile(confDir), err)
+				if err := updateCluster.SaveConfig(cfg.ConfigDirectory); err != nil {
+					return fmt.Errorf("Could not save '%s' cluster to %q: %s", updateCluster.Name, updateCluster.ConfigFile(cfg.ConfigDirectory), err)
 				}
 			}
 			fmt.Printf("Updated cluster '%s'\n", updateCluster.Name)
@@ -233,8 +236,7 @@ func (cls *Cluster) Start() error {
 	}
 	cls.Status = ClusterStatusStarting
 	for _, vmdef := range cls.Config.Machines {
-		ctx := context.Background()
-		vm, err := newVM(ctx, vmdef)
+		vm, err := newVM(cls.ctx, cls.Name, vmdef)
 		if err != nil {
 			return fmt.Errorf("Failed to create new VM '%s.%s': %s", cls.Name, vmdef.Name, err)
 		}

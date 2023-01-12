@@ -51,17 +51,17 @@ func (rh *RouteHandler) PostCluster(ctx *gin.Context) {
 	if err := ctx.BindJSON(&newCluster); err != nil {
 		return
 	}
-	conf := rh.c.Config.ConfigDirectory
-	if err := rh.c.ClusterController.AddCluster(newCluster, conf); err != nil {
+	cfg := rh.c.Config
+	if err := rh.c.ClusterController.AddCluster(newCluster, cfg); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}
 }
 
 func (rh *RouteHandler) DeleteCluster(ctx *gin.Context) {
 	clusterName := ctx.Param("clustername")
-	conf := rh.c.Config.ConfigDirectory
+	cfg := rh.c.Config
 	// TODO refuse if cluster status is running, handle --force param
-	err := rh.c.ClusterController.DeleteCluster(clusterName, conf)
+	err := rh.c.ClusterController.DeleteCluster(clusterName, cfg)
 	if err != nil {
 		fmt.Printf("ERROR: Failed to delete cluster '%s': %s\n", clusterName, err)
 	}
@@ -73,8 +73,8 @@ func (rh *RouteHandler) UpdateCluster(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	conf := rh.c.Config.ConfigDirectory
-	if err := rh.c.ClusterController.UpdateCluster(newCluster, conf); err != nil {
+	cfg := rh.c.Config
+	if err := rh.c.ClusterController.UpdateCluster(newCluster, cfg); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}
 }

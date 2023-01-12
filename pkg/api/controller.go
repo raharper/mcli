@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -61,6 +62,7 @@ func (c *Controller) Run(ctx context.Context) error {
 					if err != nil {
 						return err
 					}
+					newCluster.ctx = c.Config.GetConfigContext()
 					fmt.Println("  loaded cluster ", newCluster.Name)
 					c.ClusterController.Clusters = append(c.ClusterController.Clusters, newCluster)
 				}
@@ -89,7 +91,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	}
 	defer os.Remove(unixSocket)
 
-	fmt.Println("machined service running on: %s", unixSocket)
+	fmt.Printf("machined service running on: %s\n", unixSocket)
 	engine := gin.Default()
 	c.Router = engine
 
@@ -131,4 +133,20 @@ func PathExists(d string) bool {
 		return false
 	}
 	return true
+}
+
+func WaitForPath(path string, retries, sleepSeconds int) bool {
+	var numRetries int
+	if retries == 0 {
+		numRetries = 1
+	} else {
+		numRetries = retries
+	}
+	for i := 0; i < numRetries; i++ {
+		if PathExists(path) {
+			return true
+		}
+		time.Sleep(time.Duration(sleepSeconds) * time.Second)
+	}
+	return PathExists(path)
 }

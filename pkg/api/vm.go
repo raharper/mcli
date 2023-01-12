@@ -17,11 +17,18 @@ limitations under the License.
 package api
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+
+	"mcli-v2/pkg/qcli"
+
+	"github.com/apex/log"
 )
 
 type VMState int
@@ -35,18 +42,19 @@ const (
 )
 
 type VMDef struct {
-	Name         string     `yaml:"name"`
-	Serial       string     `yaml:"serial"`
-	Nics         []NicDef   `yaml:"nics"`
-	Disks        []QemuDisk `yaml:"disks"`
-	Boot         string     `yaml:"boot"`
-	Cdrom        string     `yaml:"cdrom"`
-	UefiVars     string     `yaml:"uefi-vars"`
-	TPM          bool       `yaml:"tpm"`
-	TPMVersion   string     `yaml:"tpm-version"`
-	KVMExtraOpts []string   `yaml:"extra-opts"`
-	SecureBoot   bool       `yaml:"secure-boot"`
-	Gui          bool       `yaml:"gui"`
+	Name       string     `yaml:"name"`
+	Cpus       uint32     `yaml:"cpus"`
+	Memory     uint32     `yaml:"memory"`
+	Serial     string     `yaml:"serial"`
+	Nics       []NicDef   `yaml:"nics"`
+	Disks      []QemuDisk `yaml:"disks"`
+	Boot       string     `yaml:"boot"`
+	Cdrom      string     `yaml:"cdrom"`
+	UefiVars   string     `yaml:"uefi-vars"`
+	TPM        bool       `yaml:"tpm"`
+	TPMVersion string     `yaml:"tpm-version"`
+	SecureBoot bool       `yaml:"secure-boot"`
+	Gui        bool       `yaml:"gui"`
 }
 
 type NicDef struct {
@@ -57,7 +65,20 @@ type NicDef struct {
 	IFName    string
 	Network   string
 	Ports     []PortRule `yaml:"ports"`
-	BootIndex string     `yaml:"bootindex"`
+	BootIndex int        `yaml:"bootindex"`
+}
+
+type VMNic struct {
+	BusAddr    string
+	DeviceType string
+	HWAddr     string
+	ID         string
+	IFName     string
+	NetIFName  string
+	NetType    string
+	NetAddr    string
+	BootIndex  int
+	Ports      []PortRule
 }
 
 // Ports are a list of PortRules
@@ -174,47 +195,203 @@ func clearAllQemuIndex() {
 	}
 }
 
+// TODO: Rename fields
 type VM struct {
 	Ctx    context.Context
 	Cancel context.CancelFunc
 	Config VMDef
-	cmd    *exec.Cmd
 	State  VMState
+	Cmd    *exec.Cmd
+	qcli   *qcli.Config
+	qmp    *qcli.QMP
+	wg     sync.WaitGroup
 }
 
-func newVM(ctx context.Context, vmConfig VMDef) (VM, error) {
+func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (VM, error) {
 	ctx, cancelFn := context.WithCancel(ctx)
+	stateDir := ctx.Value(mdcCtxStateDir).(string)
+
+	log.Infof("newVM: Generating qcli Config statedir=%s", stateDir)
+	qcfg, err := GenerateQConfig(stateDir, vmConfig)
+	if err != nil {
+		return VM{}, fmt.Errorf("Failed to generate qcli Config from VM definition: %s", err)
+	}
+
+	cmdParams, err := qcli.ConfigureParams(qcfg, nil)
+	if err != nil {
+		return VM{}, fmt.Errorf("Failed to generate new VM command parameters: %s", err)
+	}
+	log.Infof("newVM: generated qcli config parameters: %s", cmdParams)
+
 	return VM{
 		Config: vmConfig,
 		Ctx:    ctx,
 		Cancel: cancelFn,
 		State:  VMInit,
+		Cmd:    exec.Command(qcfg.Path, cmdParams...),
+		qcli:   qcfg,
 	}, nil
 }
 
-func (v *VM) Start() error {
-	fmt.Printf("Starting VM:%s\n", v.Config.Name)
-	v.State = VMStarted
-	go func(v *VM) {
-		fmt.Printf("VM:%s running until cancelled\n", v.Config.Name)
-		for {
-			select {
-			case <-v.Ctx.Done():
-				err := v.Ctx.Err()
-				if err != nil {
-					fmt.Printf("Error with VM:%s %s\n", v.Config.Name, err)
-				}
-				fmt.Printf("VM:%s finished\n", v.Config.Name)
+func (v *VM) Name() string {
+	return v.Config.Name
+}
+
+func (v *VM) runVM() error {
+	// add to waitgroup and spawn goroutine to run the command
+	errCh := make(chan error, 1)
+
+	v.wg.Add(1)
+	go func() {
+		var stderr bytes.Buffer
+		defer v.wg.Done()
+
+		log.Infof("VM:%s starting QEMU process", v.Name())
+		v.Cmd.Stderr = &stderr
+		err := v.Cmd.Start()
+		if err != nil {
+			errCh <- fmt.Errorf("VM:%s failed with: %s", stderr.String())
+			return
+		}
+
+		log.Infof("VM:%s waiting for QEMU process to exit...", v.Name())
+		err = v.Cmd.Wait()
+		if err != nil {
+			errCh <- fmt.Errorf("VM:%s wait failed with: %s", stderr.String())
+			return
+		}
+		log.Infof("VM:%s QEMU process exited", v.Name())
+		v.wg.Done()
+		errCh <- nil
+	}()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			log.Errorf("runVM failed: %s", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (v *VM) StartQMP() error {
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	qmpCh := make(chan struct{})
+
+	// FIXME: are there more than one qmp sockets allowed?
+	numQMP := len(v.qcli.QMPSockets)
+	if numQMP != 1 {
+		return fmt.Errorf("StartQMP failed, expected 1 QMP socket, found: %d", numQMP)
+	}
+
+	// start qmp goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// watch for qmp/monitor/serial sockets
+		waitOn, err := qcli.GetSocketPaths(v.qcli)
+		if err != nil {
+			errCh <- fmt.Errorf("StartQMP failed to fetch VM socket paths: %s", err)
+			return
+		}
+
+		// wait up to for 10 seconds for each.
+		for _, sock := range waitOn {
+			if !WaitForPath(sock, 10, 1) {
+				errCh <- fmt.Errorf("VM:%s socket %s does not exist", v.Name(), sock)
 				return
 			}
 		}
-	}(v)
+
+		qmpCfg := qcli.QMPConfig{
+			Logger: QMPMachineLogger{},
+		}
+
+		qmpSocketFile := v.qcli.QMPSockets[0].Name
+		log.Infof("VM:%s connecting to QMP socket %s", v.Name(), qmpSocketFile)
+		q, qver, err := qcli.QMPStart(v.Ctx, qmpSocketFile, qmpCfg, qmpCh)
+		if err != nil {
+			errCh <- fmt.Errorf("Failed to connect to qmp socket: %s", err.Error())
+			return
+		}
+		log.Infof("VM:%s QMP:%v QMPVersion:%v", v.Name(), q, qver)
+
+		// This has to be the first command executed in a QMP session.
+		err = q.ExecuteQMPCapabilities(v.Ctx)
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		v.qmp = q
+		errCh <- nil
+	}()
+
+	// wait until qmp setup is complete (or failed)
+	wg.Wait()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			log.Errorf("StartQMP failed: %s", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (v *VM) BackgroundRun() error {
+	// start vm command in background goroutine
+	err := v.runVM()
+	if err != nil {
+		return err
+	}
+
+	err = v.StartQMP()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (v *VM) Start() error {
+	log.Infof("VM:%s starting...", v.Name())
+	err := v.BackgroundRun()
+	if err != nil {
+		log.Errorf("VM:%s failed to start VM:%s %s", v.Name(), err)
+		return err
+	}
+	v.State = VMStarted
 	return nil
 }
 
 func (v *VM) Stop() error {
-	fmt.Printf("Stopping VM:%s\n", v.Config.Name)
-	v.Cancel()
+	fmt.Printf("Stopping VM:%s\n", v.Name())
+
+	// FIXME: configurable?
+	// Try shutdown via QMP, wait up to 10 seconds before force shutting down
+	timeout := time.Second * 10
+
+	// Let's try to shutdown the VM.  If it hasn't shutdown in 10 seconds we'll
+	// send a quit message.
+	log.Infof("VM:%s trying graceful shutdown via system_powerdown (%s timeout before cancelling)..", v.Name(), timeout.String())
+	err := v.qmp.ExecuteSystemPowerdown(v.Ctx)
+	if err != nil {
+		log.Errorf("VM:%s error:%s", v.Name(), err.Error())
+	}
+
+	select {
+	case <-v.Ctx.Done():
+		log.Infof("VM:%s has exited without cancel", v.Name())
+	case <-time.After(timeout):
+		log.Warnf("VM:%s timed out, killing via cancel context...", v.Name())
+		v.Cancel()
+	}
 	v.State = VMStopped
 	return nil
 }

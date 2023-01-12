@@ -49,7 +49,7 @@ type QemuDisk struct {
 	Type      string   `yaml:"type"`
 	BlockSize int      `yaml:"blocksize"`
 	BusAddr   string   `yaml:"addr"`
-	BootIndex string   `yaml:"bootindex"`
+	BootIndex int      `yaml:"bootindex"`
 	ReadOnly  bool     `yaml:"read-only"`
 }
 
@@ -198,8 +198,8 @@ func (q *QemuDisk) args(attachIndex int, bootIndex int) []string {
 		devopts = append(devopts, "bus=pcie.0")
 	}
 
-	if q.BootIndex != "" {
-		devopts = append(devopts, "bootindex="+q.BootIndex)
+	if q.BootIndex >= 0 {
+		devopts = append(devopts, fmt.Sprintf("bootindex=%d", q.BootIndex))
 	} else if bootIndex >= 0 {
 		devopts = append(devopts, fmt.Sprintf("bootindex=%d", bootIndex))
 	}
