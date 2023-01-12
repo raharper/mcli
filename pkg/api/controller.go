@@ -16,15 +16,21 @@ limitations under the License.
 package api
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/apex/log"
 	"github.com/gin-gonic/gin"
 )
 
@@ -127,6 +133,10 @@ func (c *Controller) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+//
+// utility functions below here
+//
+
 func PathExists(d string) bool {
 	_, err := os.Stat(d)
 	if err != nil && os.IsNotExist(err) {
@@ -149,4 +159,84 @@ func WaitForPath(path string, retries, sleepSeconds int) bool {
 		time.Sleep(time.Duration(sleepSeconds) * time.Second)
 	}
 	return PathExists(path)
+}
+
+func EnsureDir(dir string) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("couldn't make dirs: %s", err)
+	}
+	return nil
+}
+
+// CopyFileBits - copy file content from a to b
+// differs from CopyFile in:
+//  - does not do permissions - new files created with 0644
+//  - if src is a symlink, copies content, not link.
+//  - does not invoke sh.
+func CopyFileBits(src, dest string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dest, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	if err != nil {
+		return err
+	}
+	return out.Close()
+}
+
+// Copy one file to a new path, i.e. cp a b
+func CopyFileRefSparse(src, dest string) error {
+	if err := EnsureDir(filepath.Dir(src)); err != nil {
+		return err
+	}
+	if err := EnsureDir(filepath.Dir(dest)); err != nil {
+		return err
+	}
+	cmdtxt := fmt.Sprintf("cp --force --reflink=auto --sparse=auto %s %s", src, dest)
+	return RunCommand("sh", "-c", cmdtxt)
+}
+
+func RunCommand(args ...string) error {
+	cmd := exec.Command(args[0], args[1:]...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: %s: %s", strings.Join(args, " "), err, string(output))
+	}
+	return nil
+}
+
+func RunCommandWithOutputErrorRc(args ...string) ([]byte, []byte, int) {
+	cmd := exec.Command(args[0], args[1:]...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.Bytes(), stderr.Bytes(), GetCommandErrorRC(err)
+}
+
+func GetCommandErrorRCDefault(err error, rcError int) int {
+	if err == nil {
+		return 0
+	}
+	exitError, ok := err.(*exec.ExitError)
+	if ok {
+		if status, ok := exitError.Sys().(syscall.WaitStatus); ok {
+			return status.ExitStatus()
+		}
+	}
+	log.Debugf("Unavailable return code for %s. returning %d", err, rcError)
+	return rcError
+}
+
+func GetCommandErrorRC(err error) int {
+	return GetCommandErrorRCDefault(err, 127)
 }

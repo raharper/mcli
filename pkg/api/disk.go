@@ -114,13 +114,12 @@ func (q *QemuDisk) Create() error {
 		return nil
 	}
 	log.Infof("Creating %s type %s size %d attach %s", q.File, q.Format, q.Size, q.Attach)
-	// FIXME
-	//  cmd := []string{"qemu-img", "create", "-f", q.Format, q.File, fmt.Sprintf("%d", q.Size)}
-	//	out, err, rc := RunCommandWithOutputErrorRc(cmd...)
-	//	if rc != 0 {
-	//		return fmt.Errorf("qemu-img create failed: %v\n rc: %d\n out: %s\n, err: %s",
-	//			cmd, rc, out, err)
-	//	}
+	cmd := []string{"qemu-img", "create", "-f", q.Format, q.File, fmt.Sprintf("%d", q.Size)}
+	out, err, rc := RunCommandWithOutputErrorRc(cmd...)
+	if rc != 0 {
+		return fmt.Errorf("qemu-img create failed: %v\n rc: %d\n out: %s\n, err: %s",
+			cmd, rc, out, err)
+	}
 	return nil
 }
 

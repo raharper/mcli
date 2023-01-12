@@ -5,6 +5,7 @@ import (
 	"mcli-v2/pkg/qcli"
 	"os"
 	"path"
+	"path/filepath"
 
 	"github.com/apex/log"
 )
@@ -74,7 +75,29 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32) (*qcli.Config, erro
 	return c, nil
 }
 
-func (qd QemuDisk) QBlockDevice() (qcli.BlockDevice, error) {
+// FIXME: what to do with remote client/server ? push to zot and use zot URLs?
+// ImportDiskImage will copy/create a source image to server image
+func (qd *QemuDisk) ImportDiskImage(imageDir string) error {
+
+	// What to do about sparse? use reflink and sparse=auto for now.
+	srcFilePath := qd.File
+	destFilePath := filepath.Join(imageDir, filepath.Base(srcFilePath))
+	qd.File = destFilePath
+
+	if qd.Size > 0 {
+		return qd.Create()
+	} else {
+		log.Infof("Importing VM disk '%s' -> '%s'", srcFilePath, destFilePath)
+		err := CopyFileRefSparse(srcFilePath, destFilePath)
+		if err != nil {
+			return fmt.Errorf("Error copying VM disk '%s' -> '%s': %s", srcFilePath, destFilePath, err)
+		}
+	}
+
+	return nil
+}
+
+func (qd *QemuDisk) QBlockDevice() (qcli.BlockDevice, error) {
 	blk := qcli.BlockDevice{
 		// Driver
 		ID:        fmt.Sprintf("drive%d", getNextQemuIndex("drive")),
@@ -141,10 +164,17 @@ func (nd NicDef) QNetDevice() (qcli.NetDevice, error) {
 	return ndev, nil
 }
 
-func (v VMDef) GenQConfig(runDir string) (*qcli.Config, error) {
+func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 	c, err := NewDefaultConfig(v.Name, v.Cpus, v.Memory)
 	if err != nil {
 		return c, err
+	}
+
+	if !PathExists(runDir) {
+		err := EnsureDir(runDir)
+		if err != nil {
+			return c, fmt.Errorf("Error creating VM run dir '%s': %s", runDir, err)
+		}
 	}
 
 	if v.Cdrom != "" {
@@ -157,52 +187,19 @@ func (v VMDef) GenQConfig(runDir string) (*qcli.Config, error) {
 		v.Disks = append(v.Disks, qd)
 	}
 
-	for _, disk := range v.Disks {
+	for i := range v.Disks {
+		var disk *QemuDisk
+		disk = &v.Disks[i]
+
 		if err := disk.Sanitize(runDir); err != nil {
-			if err != nil {
-				return c, err
-			}
-		}
-		qblk, err := disk.QBlockDevice()
-		if err != nil {
 			return c, err
 		}
-		c.BlkDevices = append(c.BlkDevices, qblk)
-	}
 
-	for _, nic := range v.Nics {
-		qnet, err := nic.QNetDevice()
-		if err != nil {
+		// import/create files into stateDir/images/basename(File)
+		if err := disk.ImportDiskImage(runDir); err != nil {
 			return c, err
 		}
-		c.NetDevices = append(c.NetDevices, qnet)
-	}
 
-	return c, nil
-}
-
-func GenerateQConfig(stateDir string, v VMDef) (*qcli.Config, error) {
-	c, err := NewDefaultConfig(v.Name, v.Cpus, v.Memory)
-	if err != nil {
-		return c, err
-	}
-
-	if v.Cdrom != "" {
-		qd := QemuDisk{
-			File:   v.Cdrom,
-			Format: "raw",
-			Attach: "ide",
-			Type:   "cdrom",
-		}
-		v.Disks = append(v.Disks, qd)
-	}
-
-	for _, disk := range v.Disks {
-		if err := disk.Sanitize(stateDir); err != nil {
-			if err != nil {
-				return c, err
-			}
-		}
 		qblk, err := disk.QBlockDevice()
 		if err != nil {
 			return c, err

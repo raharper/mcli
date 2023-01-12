@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -201,6 +202,7 @@ type VM struct {
 	Cancel context.CancelFunc
 	Config VMDef
 	State  VMState
+	RunDir string
 	Cmd    *exec.Cmd
 	qcli   *qcli.Config
 	qmp    *qcli.QMP
@@ -210,9 +212,10 @@ type VM struct {
 func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (VM, error) {
 	ctx, cancelFn := context.WithCancel(ctx)
 	stateDir := ctx.Value(mdcCtxStateDir).(string)
+	runDir := filepath.Join(stateDir, "clusters", clusterName, vmConfig.Name)
 
-	log.Infof("newVM: Generating qcli Config statedir=%s", stateDir)
-	qcfg, err := GenerateQConfig(stateDir, vmConfig)
+	log.Infof("newVM: Generating qcli Config rundir=%s", runDir)
+	qcfg, err := GenerateQConfig(runDir, vmConfig)
 	if err != nil {
 		return VM{}, fmt.Errorf("Failed to generate qcli Config from VM definition: %s", err)
 	}
@@ -230,6 +233,7 @@ func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (VM, error) 
 		State:  VMInit,
 		Cmd:    exec.Command(qcfg.Path, cmdParams...),
 		qcli:   qcfg,
+		RunDir: runDir,
 	}, nil
 }
 
