@@ -613,7 +613,6 @@ func GetSocketPaths(config *Config) ([]string, error) {
 
 func ConfigureParams(config *Config, logger QMPLog) ([]string, error) {
 	var err error
-	fmt.Printf("Configuring parameters...\n")
 	if logger == nil {
 		logger = qmpNullLogger{}
 	}
