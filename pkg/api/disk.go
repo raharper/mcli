@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/apex/log"
 	humanize "github.com/dustin/go-humanize"
+	log "github.com/sirupsen/logrus"
 )
 
 type DiskSize int64

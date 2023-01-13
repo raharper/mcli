@@ -20,6 +20,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 type RouteHandler struct {
@@ -63,7 +64,7 @@ func (rh *RouteHandler) DeleteCluster(ctx *gin.Context) {
 	// TODO refuse if cluster status is running, handle --force param
 	err := rh.c.ClusterController.DeleteCluster(clusterName, cfg)
 	if err != nil {
-		fmt.Printf("ERROR: Failed to delete cluster '%s': %s\n", clusterName, err)
+		log.Errorf("Failed to delete cluster '%s': %s\n", clusterName, err)
 	}
 }
 

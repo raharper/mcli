@@ -7,7 +7,7 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/apex/log"
+	log "github.com/sirupsen/logrus"
 )
 
 func GetKvmPath() (string, error) {

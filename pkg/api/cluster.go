@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 )
 
@@ -62,14 +63,14 @@ type VMNicNetLinks map[string]string
 type ConnDef map[string]VMNicNetLinks
 
 func (ctl *ClusterController) GetClusterByName(clusterName string) (*Cluster, error) {
-	fmt.Printf("FindClusterByName: clusters:%v clusterName: %s\n", ctl.Clusters, clusterName)
+	log.Infof("FindClusterByName: clusters:%v clusterName: %s", ctl.Clusters, clusterName)
 	for _, cluster := range ctl.Clusters {
 		if cluster.Name == clusterName {
-			fmt.Println("found it")
+			log.Infof("found it")
 			return &cluster, nil
 		}
 	}
-	fmt.Println("returning")
+	log.Infof("returning")
 	return &Cluster{}, fmt.Errorf("Failed to find cluster with Name: %s", clusterName)
 }
 
@@ -82,13 +83,12 @@ func (ctl *ClusterController) AddCluster(newCluster Cluster, cfg *MachineDaemonC
 		return fmt.Errorf("Cluster '%s' is already defined", newCluster.Name)
 	}
 	newCluster.Status = ClusterStatusStopped
+	newCluster.ctx = cfg.GetConfigContext()
 	if !newCluster.Ephemeral {
-		cluster := &newCluster
-		if err := cluster.SaveConfig(cfg.ConfigDirectory); err != nil {
-			return fmt.Errorf("Could not save '%s' cluster to %q: %s", cluster.Name, cluster.ConfigFile(cfg.ConfigDirectory), err)
+		if err := newCluster.SaveConfig(); err != nil {
+			return fmt.Errorf("Could not save '%s' cluster to %q: %s", newCluster.Name, newCluster.ConfigFile(), err)
 		}
 	}
-	newCluster.ctx = cfg.GetConfigContext()
 	ctl.Clusters = append(ctl.Clusters, newCluster)
 	return nil
 }
@@ -98,7 +98,7 @@ func (ctl *ClusterController) StopClusters() error {
 		cluster := ctl.Clusters[idx]
 		if cluster.IsRunning() {
 			if err := cluster.Stop(); err != nil {
-				fmt.Printf("Error while stopping cluster '%s': %s\n", cluster.Name, err)
+				log.Infof("Error while stopping cluster '%s': %s", cluster.Name, err)
 			}
 		}
 	}
@@ -112,17 +112,11 @@ func (ctl *ClusterController) DeleteCluster(clusterName string, cfg *MachineDaem
 		if cluster.Name != clusterName {
 			clusters = append(clusters, cluster)
 		} else {
-			if cluster.IsRunning() {
-				err := cluster.Stop()
-				if err != nil {
-					fmt.Println("Failed stopping cluster, continuing with Delete")
-				}
-			}
-			err := cluster.RemoveConfig(cluster.ConfigFile(cfg.ConfigDirectory))
+			err := cluster.Delete()
 			if err != nil {
-				return fmt.Errorf("Failed to remove cluster config file: %s", err)
+				return fmt.Errorf("Cluster:%s delete failed: %s", cluster.Name, err)
 			}
-			fmt.Println("Removed cluster: ", cluster.Name)
+			log.Infof("Deleted cluster: %s", cluster.Name)
 		}
 	}
 	ctl.Clusters = clusters
@@ -139,11 +133,11 @@ func (ctl *ClusterController) UpdateCluster(updateCluster Cluster, cfg *MachineD
 			updateCluster.ctx = cfg.GetConfigContext()
 			ctl.Clusters[idx] = updateCluster
 			if !updateCluster.Ephemeral {
-				if err := updateCluster.SaveConfig(cfg.ConfigDirectory); err != nil {
-					return fmt.Errorf("Could not save '%s' cluster to %q: %s", updateCluster.Name, updateCluster.ConfigFile(cfg.ConfigDirectory), err)
+				if err := updateCluster.SaveConfig(); err != nil {
+					return fmt.Errorf("Could not save '%s' cluster to %q: %s", updateCluster.Name, updateCluster.ConfigFile(), err)
 				}
 			}
-			fmt.Printf("Updated cluster '%s'\n", updateCluster.Name)
+			log.Infof("Updated cluster '%s'", updateCluster.Name)
 			break
 		}
 	}
@@ -179,17 +173,42 @@ func (ctl *ClusterController) StopCluster(clusterName string) error {
 //
 // Cluster Functions Below
 //
-func (cls *Cluster) ConfigFile(confDir string) string {
-	// FIXME: need to decide on the name of this yaml file
-	confPath := filepath.Join(confDir, "clusters", cls.Name)
-	configFile := filepath.Join(confPath, "machine.yaml")
-	return configFile
+func (cls *Cluster) ConfigDir() string {
+	return filepath.Join(cls.ctx.Value(mdcCtxConfDir).(string), "clusters", cls.Name)
 }
 
-func (cls *Cluster) SaveConfig(confDir string) error {
-	configFile := cls.ConfigFile(confDir)
+func (cls *Cluster) DataDir() string {
+	return filepath.Join(cls.ctx.Value(mdcCtxDataDir).(string), "clusters", cls.Name)
+}
+
+func (cls *Cluster) StateDir() string {
+	return filepath.Join(cls.ctx.Value(mdcCtxStateDir).(string), "clusters", cls.Name)
+}
+
+var (
+	clsCtx         = "cluster-ctx"
+	clsCtxConfDir  = mdcCtx + "-confdir"
+	clsCtxDataDir  = mdcCtx + "-datadir"
+	clsCtxStateDir = mdcCtx + "-statedir"
+)
+
+func (cls *Cluster) Context() context.Context {
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, clsCtxConfDir, cls.ConfigDir())
+	ctx = context.WithValue(ctx, clsCtxDataDir, cls.DataDir())
+	ctx = context.WithValue(ctx, clsCtxStateDir, cls.StateDir())
+	return ctx
+}
+
+func (cls *Cluster) ConfigFile() string {
+	// FIXME: need to decide on the name of this yaml file
+	return filepath.Join(cls.ConfigDir(), "machine.yaml")
+}
+
+func (cls *Cluster) SaveConfig() error {
+	configFile := cls.ConfigFile()
 	clustersDir := filepath.Dir(configFile)
-	fmt.Printf("clustersDir: %q configFile: %q\n", clustersDir, configFile)
+	log.Debugf("clustersDir: %q configFile: %q", clustersDir, configFile)
 	if !PathExists(clustersDir) {
 		if err := os.MkdirAll(clustersDir, 0755); err != nil {
 			return fmt.Errorf("Failed to create clustersDir %q: %s", clustersDir, err)
@@ -199,7 +218,6 @@ func (cls *Cluster) SaveConfig(confDir string) error {
 	if err != nil {
 		return fmt.Errorf("Failed to marshal cluster config: %s", err)
 	}
-	fmt.Println(string(contents))
 	if err := ioutil.WriteFile(configFile, contents, 0644); err != nil {
 		return fmt.Errorf("Failed write cluster config to '%q': %s", configFile, err)
 	}
@@ -218,16 +236,6 @@ func LoadConfig(configFile string) (Cluster, error) {
 	return newCluster, nil
 }
 
-func (cls *Cluster) RemoveConfig(configFile string) error {
-	if PathExists(configFile) {
-		// remove everything under the cluster dir
-		clustersDir := filepath.Dir(configFile)
-		fmt.Printf("Removing cluster config dir %q\n", clustersDir)
-		return os.RemoveAll(clustersDir)
-	}
-	return nil
-}
-
 func (cls *Cluster) Start() error {
 
 	// check if cluster is running, if so return
@@ -236,17 +244,24 @@ func (cls *Cluster) Start() error {
 	}
 	cls.Status = ClusterStatusStarting
 	for _, vmdef := range cls.Config.Machines {
-		vm, err := newVM(cls.ctx, cls.Name, vmdef)
+		vmCtx := cls.Context()
+		vm, err := newVM(vmCtx, cls.Name, vmdef)
 		if err != nil {
+			cls.Status = ClusterStatusStopped
 			return fmt.Errorf("Failed to create new VM '%s.%s': %s", cls.Name, vmdef.Name, err)
 		}
+
+		log.Infof("Cluster.StartCluster, VM instances before append: %d", len(cls.Config.instances))
+		// append the VM unless newVM failed so we can cleanup the VM on delete
+		cls.Config.instances = append(cls.Config.instances, &vm)
+
 		err = vm.Start()
 		if err != nil {
+			cls.Status = ClusterStatusStopped
 			return fmt.Errorf("Failed to start VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
 		}
-		fmt.Printf("Cluster.StartCluster, VM instances before append: %d\n", len(cls.Config.instances))
-		cls.Config.instances = append(cls.Config.instances, &vm)
-		fmt.Printf("Cluster.StartCluster, VM instances after  append: %d %v\n", len(cls.Config.instances), cls.Config.instances)
+
+		log.Infof("Cluster.StartCluster, VM instances after  append: %d %v", len(cls.Config.instances), cls.Config.instances)
 		cls.vmCount.Add(1)
 	}
 	cls.Status = ClusterStatusRunning
@@ -255,15 +270,15 @@ func (cls *Cluster) Start() error {
 
 func (cls *Cluster) Stop() error {
 
-	fmt.Printf("Cluster.Stop called on cluster %s, status: %s\n", cls.Name, cls.Status)
+	log.Infof("Cluster.Stop called on cluster %s, status: %s", cls.Name, cls.Status)
 	// check if cluster is stopped, if so return
 	if !cls.IsRunning() {
 		return fmt.Errorf("Cluster is already stopped")
 	}
 
-	fmt.Printf("Cluster.Stop, VM instances: %d\n", len(cls.Config.instances))
+	log.Infof("Cluster.Stop, VM instances: %d", len(cls.Config.instances))
 	for _, vm := range cls.Config.instances {
-		fmt.Printf("Cluster.Stop, VM instance: %s, calling stop\n", vm.Config.Name)
+		log.Infof("Cluster.Stop, VM instance: %s, calling stop", vm.Config.Name)
 		err := vm.Stop()
 		if err != nil {
 			return fmt.Errorf("Failed to stop VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
@@ -271,6 +286,43 @@ func (cls *Cluster) Stop() error {
 		cls.vmCount.Done()
 	}
 	cls.Status = ClusterStatusStopped
+	return nil
+}
+
+func (cls *Cluster) Delete() error {
+	// Stop cluster, if running
+	// for each VM:
+	//   delete VM (stop and remove state)
+	// Remove Cluster Config
+
+	log.Infof("Cluster.Delete called on cluster %s, status: %s", cls.Name, cls.Status)
+	if cls.IsRunning() {
+		err := cls.Stop()
+		if err != nil {
+			return fmt.Errorf("Failed to stop cluster '%s': %s", cls.Name, err)
+		}
+	}
+
+	for _, vm := range cls.Config.instances {
+		log.Infof("Cluster.Delete, VM instance: %s, calling delete", vm.Name())
+		err := vm.Delete()
+		if err != nil {
+			return fmt.Errorf("Failed to delete VM '%s.%s': %s", cls.Name, vm.Name(), err)
+		}
+	}
+	cls.Config.instances = []*VM{}
+
+	dirs := []string{cls.ConfigDir(), cls.DataDir(), cls.StateDir()}
+	for _, dir := range dirs {
+		if PathExists(dir) {
+			log.Infof("Removing cluster dir %q", dir)
+			err := os.RemoveAll(dir)
+			if err != nil {
+				return fmt.Errorf("Failed to remove cluster %s dir %q", cls.Name, dir)
+			}
+		}
+	}
+
 	return nil
 }
 

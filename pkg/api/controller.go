@@ -30,8 +30,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/apex/log"
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 type Controller struct {
@@ -56,7 +56,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	// load existing clusters
 	clusterDir := filepath.Join(c.Config.ConfigDirectory, "clusters")
 	if PathExists(clusterDir) {
-		fmt.Println("Loading saved cluster configs...")
+		log.Infof("Loading saved cluster configs...")
 		err := filepath.Walk(clusterDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
@@ -69,7 +69,7 @@ func (c *Controller) Run(ctx context.Context) error {
 						return err
 					}
 					newCluster.ctx = c.Config.GetConfigContext()
-					fmt.Println("  loaded cluster ", newCluster.Name)
+					log.Infof("  loaded cluster %s", newCluster.Name)
 					c.ClusterController.Clusters = append(c.ClusterController.Clusters, newCluster)
 				}
 			}
@@ -97,7 +97,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	}
 	defer os.Remove(unixSocket)
 
-	fmt.Printf("machined service running on: %s\n", unixSocket)
+	log.Infof("machined service running on: %s\n", unixSocket)
 	engine := gin.Default()
 	c.Router = engine
 

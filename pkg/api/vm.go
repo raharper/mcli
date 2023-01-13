@@ -20,10 +20,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -56,114 +55,6 @@ type VMDef struct {
 	TPMVersion string     `yaml:"tpm-version"`
 	SecureBoot bool       `yaml:"secure-boot"`
 	Gui        bool       `yaml:"gui"`
-}
-
-type NicDef struct {
-	BusAddr   string `yaml:"addr"`
-	Device    string `yaml:"device"`
-	ID        string `yaml:"id"`
-	Mac       string `yaml:"mac"`
-	IFName    string
-	Network   string
-	Ports     []PortRule `yaml:"ports"`
-	BootIndex int        `yaml:"bootindex"`
-}
-
-type VMNic struct {
-	BusAddr    string
-	DeviceType string
-	HWAddr     string
-	ID         string
-	IFName     string
-	NetIFName  string
-	NetType    string
-	NetAddr    string
-	BootIndex  int
-	Ports      []PortRule
-}
-
-// Ports are a list of PortRules
-// nics:
-//  - id: nic1
-//    ports:
-//      - "tcp:localhost:22222": "localhost:22"
-//      - 1234: 23
-//      - 8080: 80
-
-// A PortRule is a single entry map where the key and value represent
-// the host and guest mapping respectively. The Host and Guest value
-
-type PortRule struct {
-	Protocol string
-	Host     Port
-	Guest    Port
-}
-
-type Port struct {
-	Address string
-	Port    int
-}
-
-func (p *PortRule) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	DefaultPortProtocol := "tcp"
-	DefaultPortHostAddress := ""
-	DefaultPortGuestAddress := ""
-	var ruleVal map[string]string
-	var err error
-
-	if err = unmarshal(&ruleVal); err != nil {
-		return err
-	}
-
-	for hostVal, guestVal := range ruleVal {
-		hostToks := strings.Split(hostVal, ":")
-		if len(hostToks) == 3 {
-			p.Protocol = hostToks[0]
-			p.Host.Address = hostToks[1]
-			p.Host.Port, err = strconv.Atoi(hostToks[2])
-			if err != nil {
-				return err
-			}
-		} else if len(hostToks) == 2 {
-			p.Protocol = DefaultPortProtocol
-			p.Host.Address = hostToks[0]
-			p.Host.Port, err = strconv.Atoi(hostToks[1])
-			if err != nil {
-				return err
-			}
-		} else {
-			p.Protocol = DefaultPortProtocol
-			p.Host.Address = DefaultPortHostAddress
-			p.Host.Port, err = strconv.Atoi(hostToks[0])
-			if err != nil {
-				return err
-			}
-		}
-		guestToks := strings.Split(guestVal, ":")
-		if len(guestToks) == 2 {
-			p.Guest.Address = guestToks[0]
-			p.Guest.Port, err = strconv.Atoi(guestToks[1])
-			if err != nil {
-				return err
-			}
-		} else {
-			p.Guest.Address = DefaultPortGuestAddress
-			p.Guest.Port, err = strconv.Atoi(guestToks[0])
-			if err != nil {
-				return err
-			}
-		}
-		break
-	}
-	if p.Protocol != "tcp" && p.Protocol != "udp" {
-		return fmt.Errorf("Invalid PortRule.Protocol value: %s . Must be 'tcp' or 'udp'", p.Protocol)
-	}
-	return nil
-}
-
-func (p *PortRule) String() string {
-	return fmt.Sprintf("%s:%s:%d-%s:%d", p.Protocol,
-		p.Host.Address, p.Host.Port, p.Guest.Address, p.Guest.Port)
 }
 
 var QemuTypeIndex map[string]int
@@ -211,8 +102,7 @@ type VM struct {
 
 func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (VM, error) {
 	ctx, cancelFn := context.WithCancel(ctx)
-	stateDir := ctx.Value(mdcCtxStateDir).(string)
-	runDir := filepath.Join(stateDir, "clusters", clusterName, vmConfig.Name)
+	runDir := filepath.Join(ctx.Value(clsCtxStateDir).(string), vmConfig.Name)
 
 	log.Infof("newVM: Generating qcli Config rundir=%s", runDir)
 	qcfg, err := GenerateQConfig(runDir, vmConfig)
@@ -375,7 +265,7 @@ func (v *VM) Start() error {
 }
 
 func (v *VM) Stop() error {
-	fmt.Printf("Stopping VM:%s\n", v.Name())
+	log.Infof("VM:%s stopping...\n", v.Name())
 
 	// FIXME: configurable?
 	// Try shutdown via QMP, wait up to 10 seconds before force shutting down
@@ -396,6 +286,31 @@ func (v *VM) Stop() error {
 		log.Warnf("VM:%s timed out, killing via cancel context...", v.Name())
 		v.Cancel()
 	}
+	v.wg.Wait()
 	v.State = VMStopped
+	return nil
+}
+
+func (v *VM) IsRunning() bool {
+	if v.State == VMStarted {
+		return true
+	}
+	return false
+}
+
+func (v *VM) Delete() error {
+	log.Infof("VM:%s deleting self...", v.Name())
+	if v.IsRunning() {
+		err := v.Stop()
+		if err != nil {
+			return fmt.Errorf("Failed to delete VM:%s :%s", v.Name(), err)
+		}
+	}
+
+	if PathExists(v.RunDir) {
+		log.Infof("VM:%s removing state dir: %q", v.Name(), v.RunDir)
+		return os.RemoveAll(v.RunDir)
+	}
+
 	return nil
 }
