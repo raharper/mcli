@@ -42,15 +42,15 @@ func (s *DiskSize) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 type QemuDisk struct {
-	File      string   `yaml:"file"`
-	Format    string   `yaml:"format"`
+	File      string   `yaml:"file,omitempty"`
+	Format    string   `yaml:"format,omitempty"`
 	Size      DiskSize `yaml:"size"`
-	Attach    string   `yaml:"attach"`
+	Attach    string   `yaml:"attach,omitempty" default:"virtio"`
 	Type      string   `yaml:"type"`
-	BlockSize int      `yaml:"blocksize"`
-	BusAddr   string   `yaml:"addr"`
-	BootIndex int      `yaml:"bootindex"`
-	ReadOnly  bool     `yaml:"read-only"`
+	BlockSize int      `yaml:"blocksize,omitempty" default:512`
+	BusAddr   string   `yaml:"addr,omitempty"`
+	BootIndex int      `yaml:"bootindex,omitempty" default:-1`
+	ReadOnly  bool     `yaml:"read-only,omitempty"`
 }
 
 func (q *QemuDisk) Sanitize(basedir string) error {
@@ -238,5 +238,55 @@ func (q *QemuDisk) args(attachIndex int, bootIndex int) []string {
 	return []string{
 		"-drive", strings.Join(driveopts, ","),
 		"-device", strings.Join(devopts, ","),
+	}
+}
+
+func (v *VMDef) AdjustBootIndicies() {
+	log.Infof("adjusting boot indicies. vm.boot is %s", v.Boot)
+	if v.Boot != "cdrom" {
+		hdds := 0
+		ssds := 0
+		for _, d := range v.Disks {
+			switch d.Type {
+			case "ssd":
+				ssds++
+			case "hdd":
+				hdds++
+			}
+		}
+		if ssds != 0 { // a bit odd, but mimicks what we did before
+			v.Boot = "ssd"
+		} else if hdds != 0 {
+			v.Boot = "hdd"
+		}
+	}
+
+	index := 0
+	for n, d := range v.Disks {
+		switch d.Type {
+		case "cdrom":
+			if v.Boot == "cdrom" {
+				log.Infof("adding bootindex 0 to cdrom")
+				d.BootIndex = 0
+				v.Disks[n] = d
+			}
+		case "ssd":
+			if v.Boot == "ssd" {
+				log.Infof("adding bootindex 0 to ssd")
+				d.BootIndex = index
+				index = index + 1
+				v.Disks[n] = d
+			}
+		case "hdd":
+			if v.Boot == "hdd" {
+				log.Infof("adding bootindex 0 to hdd")
+				d.BootIndex = index
+				index = index + 1
+				v.Disks[n] = d
+			}
+		default:
+			// disable bootindex for this disk
+			d.BootIndex = -1
+		}
 	}
 }

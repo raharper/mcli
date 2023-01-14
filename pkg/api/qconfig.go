@@ -187,6 +187,8 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 		v.Disks = append(v.Disks, qd)
 	}
 
+	v.AdjustBootIndicies()
+
 	for i := range v.Disks {
 		var disk *QemuDisk
 		disk = &v.Disks[i]
