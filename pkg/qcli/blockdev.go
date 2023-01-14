@@ -228,12 +228,18 @@ func (blkdev BlockDevice) QemuParams(config *Config) []string {
 		deviceParams = append(deviceParams, fmt.Sprintf("serial=%s", blkdev.ID))
 	}
 
-	// FIXME: handle if vrtio and BusAddr is set, append addr= to deviceParams
-
 	deviceParams = append(deviceParams, fmt.Sprintf("bootindex=%d", blkdev.BootIndex))
 
-	if s := blkdev.Transport.disableModern(config, blkdev.DisableModern); s != "" {
-		deviceParams = append(deviceParams, s)
+	if blkdev.Driver == VirtioBlock {
+		if s := blkdev.Transport.disableModern(config, blkdev.DisableModern); s != "" {
+			deviceParams = append(deviceParams, s)
+		}
+
+		// virtio can have a BusAddr since they are pci devices
+		addr := config.pciBusSlots.GetSlot(blkdev.BusAddr)
+		if addr > 0 {
+			deviceParams = append(deviceParams, fmt.Sprintf("addr=0x%02x", addr))
+		}
 	}
 
 	if blkdev.RotationRate > 0 && !strings.HasPrefix(string(blkdev.Driver), "virtio") {

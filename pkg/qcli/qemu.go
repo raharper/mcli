@@ -290,6 +290,8 @@ type Config struct {
 
 	// SM-BIOS Info TBD
 
+	pciBusSlots PCIBus
+
 	qemuParams []string
 }
 
