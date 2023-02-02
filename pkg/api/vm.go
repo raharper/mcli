@@ -155,7 +155,6 @@ func (v *VM) runVM() error {
 			return
 		}
 		log.Infof("VM:%s QEMU process exited", v.Name())
-		v.wg.Done()
 		errCh <- nil
 	}()
 

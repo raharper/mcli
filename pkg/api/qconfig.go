@@ -61,7 +61,6 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32) (*qcli.Config, erro
 				Driver:    qcli.VirtioRng,
 				ID:        "rng0",
 				Bus:       "pcie.0",
-				Addr:      "3",
 				Transport: qcli.TransportPCI,
 				Filename:  qcli.RngDevUrandom,
 			},

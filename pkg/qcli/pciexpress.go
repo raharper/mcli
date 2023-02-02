@@ -27,15 +27,16 @@ package qcli
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // 32 slots available, place auto-created devices
 // starting at the end and decrement as needed
 // to avoid impacting
-const PCISlotMax int = 32
+const PCISlotMax int = 31
 
 // slot 0, 1, and 2 are always taken
 const PCISlotOffset = 3
@@ -47,11 +48,13 @@ func (bus *PCIBus) SetSlot(slot int) error {
 		return fmt.Errorf("Slot %d must be < %d", slot, PCISlotMax)
 	}
 	bus[slot] = true
+	log.Info("PCIBus: allocated slot %02x", slot)
 	return nil
 }
 
 func (bus *PCIBus) GetSlot(busAddr string) int {
 	// see if supplised busAddr string is set, if so use that
+	log.Infof("PCIBus(%v).GetSlot(addr=%v)", bus, busAddr)
 	if busAddr != "" {
 		slot, _ := parseBusAddrString(busAddr)
 		if slot > 0 {
@@ -64,10 +67,12 @@ func (bus *PCIBus) GetSlot(busAddr string) int {
 			}
 		}
 	}
+	log.Infof("PCIBus(%v) no bus addr, find an open slot\n")
 	// should we error or allocate an open slot?
 
-	// skip to the starting slot offset
-	for slot := PCISlotOffset; slot < PCISlotMax; slot++ {
+	// start from the top end of PCI range and descend to PCI offset to avoid
+	// using typically assigned pci slots
+	for slot := PCISlotMax - 1; slot > PCISlotOffset; slot-- {
 		status := bus[slot]
 		if !status {
 			if err := bus.SetSlot(slot); err != nil {
@@ -76,7 +81,7 @@ func (bus *PCIBus) GetSlot(busAddr string) int {
 			return slot
 		}
 	}
-	fmt.Errorf("No PCI slots remaining")
+	log.Errorf("PCIBus(%v) No PCI slots remaining", bus)
 	return -1
 }
 
