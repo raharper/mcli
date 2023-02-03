@@ -251,11 +251,11 @@ func (blkdev BlockDevice) QemuParams(config *Config) []string {
 		deviceParams = append(deviceParams, fmt.Sprintf("physical_block_size=%d", blkdev.BlockSize))
 	}
 
-	if !blkdev.SCSI {
+	if !blkdev.SCSI && blkdev.Driver != IDECDROM {
 		deviceParams = append(deviceParams, "scsi=off")
 	}
 
-	if !blkdev.WCE {
+	if !blkdev.WCE && blkdev.Driver != IDECDROM {
 		deviceParams = append(deviceParams, "config-wce=off")
 	}
 

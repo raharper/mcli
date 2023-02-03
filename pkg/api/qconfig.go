@@ -65,6 +65,13 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32) (*qcli.Config, erro
 				Filename:  qcli.RngDevUrandom,
 			},
 		},
+		QMPSockets: []qcli.QMPSocket{
+			qcli.QMPSocket{
+				Type:   "unix",
+				Server: true,
+				NoWait: true,
+			},
+		},
 		GlobalParams: []string{
 			"ICH9-LPC.disable_s3=1",
 			"driver=cfi.pflash01,property=secure,value=on",
@@ -77,36 +84,49 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32) (*qcli.Config, erro
 // FIXME: what to do with remote client/server ? push to zot and use zot URLs?
 // ImportDiskImage will copy/create a source image to server image
 func (qd *QemuDisk) ImportDiskImage(imageDir string) error {
-
 	// What to do about sparse? use reflink and sparse=auto for now.
+	if qd.Size > 0 {
+		return qd.Create()
+	}
+
+	if !PathExists(qd.File) {
+		return fmt.Errorf("Disk File %q does not exist", qd.File)
+	}
+
 	srcFilePath := qd.File
 	destFilePath := filepath.Join(imageDir, filepath.Base(srcFilePath))
 	qd.File = destFilePath
 
-	if qd.Size > 0 {
-		return qd.Create()
-	} else {
+	log.Infof("Importing VM disk qd.File=%q dest=%q", srcFilePath, destFilePath)
+
+	if srcFilePath != destFilePath || !PathExists(destFilePath) {
 		log.Infof("Importing VM disk '%s' -> '%s'", srcFilePath, destFilePath)
 		err := CopyFileRefSparse(srcFilePath, destFilePath)
 		if err != nil {
 			return fmt.Errorf("Error copying VM disk '%s' -> '%s': %s", srcFilePath, destFilePath, err)
 		}
+	} else {
+		log.Infof("VM disk imported %q", filepath.Base(srcFilePath))
 	}
 
 	return nil
 }
 
-func (qd *QemuDisk) QBlockDevice() (qcli.BlockDevice, error) {
+func (qd *QemuDisk) QBlockDevice(qti *qcli.QemuTypeIndex) (qcli.BlockDevice, error) {
+	log.Infof("QemuDisk -> QBlockDevice() %+v", qd)
 	blk := qcli.BlockDevice{
-		// Driver
-		ID:        fmt.Sprintf("drive%d", getNextQemuIndex("drive")),
+		ID:        fmt.Sprintf("drive%d", qti.NextDriveIndex()),
 		File:      qd.File,
 		Interface: qcli.NoInterface,
 		AIO:       qcli.Threads,
 		BlockSize: qd.BlockSize,
 		BusAddr:   qd.BusAddr,
-		BootIndex: qd.BootIndex,
 		ReadOnly:  qd.ReadOnly,
+	}
+	if qd.BootIndex != nil {
+		blk.BootIndex = *qd.BootIndex
+	} else {
+		blk.BootIndex = qti.NextBootIndex()
 	}
 
 	if qd.Format != "" {
@@ -147,19 +167,24 @@ func (qd *QemuDisk) QBlockDevice() (qcli.BlockDevice, error) {
 	return blk, nil
 }
 
-func (nd NicDef) QNetDevice() (qcli.NetDevice, error) {
+func (nd NicDef) QNetDevice(qti *qcli.QemuTypeIndex) (qcli.NetDevice, error) {
 	//FIXME: how do we do bridge or socket/mcast types?
 	ndev := qcli.NetDevice{
 		Type:       qcli.USER,
-		ID:         nd.ID,
+		ID:         fmt.Sprintf("net%d", qti.NextNetIndex()),
 		Addr:       nd.BusAddr,
 		MACAddress: nd.Mac,
 		User: qcli.NetDeviceUser{
 			IPV4: true,
 		},
-		BootIndex: nd.BootIndex,
-		Driver:    qcli.DeviceDriver(nd.Device),
+		Driver: qcli.DeviceDriver(nd.Device),
 	}
+	if nd.BootIndex != nil {
+		ndev.BootIndex = *nd.BootIndex
+	} else {
+		ndev.BootIndex = qti.NextBootIndex()
+	}
+
 	return ndev, nil
 }
 
@@ -176,6 +201,9 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 		}
 	}
 
+	qmpSocketName := filepath.Join(runDir, "qmp.sock")
+	c.QMPSockets[0].Name = qmpSocketName
+
 	if v.Cdrom != "" {
 		qd := QemuDisk{
 			File:   v.Cdrom,
@@ -186,7 +214,9 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 		v.Disks = append(v.Disks, qd)
 	}
 
-	v.AdjustBootIndicies()
+	qti := qcli.NewQemuTypeIndex()
+
+	v.AdjustBootIndicies(qti)
 
 	for i := range v.Disks {
 		var disk *QemuDisk
@@ -201,7 +231,7 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 			return c, err
 		}
 
-		qblk, err := disk.QBlockDevice()
+		qblk, err := disk.QBlockDevice(qti)
 		if err != nil {
 			return c, err
 		}
@@ -209,7 +239,7 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 	}
 
 	for _, nic := range v.Nics {
-		qnet, err := nic.QNetDevice()
+		qnet, err := nic.QNetDevice(qti)
 		if err != nil {
 			return c, err
 		}

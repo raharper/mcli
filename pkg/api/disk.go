@@ -45,11 +45,11 @@ type QemuDisk struct {
 	File      string   `yaml:"file,omitempty"`
 	Format    string   `yaml:"format,omitempty"`
 	Size      DiskSize `yaml:"size"`
-	Attach    string   `yaml:"attach,omitempty" default:"virtio"`
+	Attach    string   `yaml:"attach,omitempty"`
 	Type      string   `yaml:"type"`
-	BlockSize int      `yaml:"blocksize,omitempty" default:512`
+	BlockSize int      `yaml:"blocksize,omitempty"`
 	BusAddr   string   `yaml:"addr,omitempty"`
-	BootIndex int      `yaml:"bootindex,omitempty" default:-1`
+	BootIndex *int     `yaml:"bootindex,omitempty"`
 	ReadOnly  bool     `yaml:"read-only,omitempty"`
 }
 
@@ -136,6 +136,7 @@ func (q *QemuDisk) serial() string {
 }
 
 // args - return a list of strings to pass to qemu
+/*
 func (q *QemuDisk) args(attachIndex int, bootIndex int) []string {
 	driver := ""
 	ssd := "ssd"
@@ -240,53 +241,4 @@ func (q *QemuDisk) args(attachIndex int, bootIndex int) []string {
 		"-device", strings.Join(devopts, ","),
 	}
 }
-
-func (v *VMDef) AdjustBootIndicies() {
-	log.Infof("adjusting boot indicies. vm.boot is %s", v.Boot)
-	if v.Boot != "cdrom" {
-		hdds := 0
-		ssds := 0
-		for _, d := range v.Disks {
-			switch d.Type {
-			case "ssd":
-				ssds++
-			case "hdd":
-				hdds++
-			}
-		}
-		if ssds != 0 { // a bit odd, but mimicks what we did before
-			v.Boot = "ssd"
-		} else if hdds != 0 {
-			v.Boot = "hdd"
-		}
-	}
-
-	index := 0
-	for n, d := range v.Disks {
-		switch d.Type {
-		case "cdrom":
-			if v.Boot == "cdrom" {
-				log.Infof("adding bootindex 0 to cdrom")
-				d.BootIndex = 0
-				v.Disks[n] = d
-			}
-		case "ssd":
-			if v.Boot == "ssd" {
-				log.Infof("adding bootindex 0 to ssd")
-				d.BootIndex = index
-				index = index + 1
-				v.Disks[n] = d
-			}
-		case "hdd":
-			if v.Boot == "hdd" {
-				log.Infof("adding bootindex 0 to hdd")
-				d.BootIndex = index
-				index = index + 1
-				v.Disks[n] = d
-			}
-		default:
-			// disable bootindex for this disk
-			d.BootIndex = -1
-		}
-	}
-}
+*/

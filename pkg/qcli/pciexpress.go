@@ -48,26 +48,24 @@ func (bus *PCIBus) SetSlot(slot int) error {
 		return fmt.Errorf("Slot %d must be < %d", slot, PCISlotMax)
 	}
 	bus[slot] = true
-	log.Info("PCIBus: allocated slot %02x", slot)
+	log.Info("PCIBus: allocated slot %s", fmt.Sprintf("0x%02x", slot))
 	return nil
 }
 
 func (bus *PCIBus) GetSlot(busAddr string) int {
 	// see if supplised busAddr string is set, if so use that
-	log.Infof("PCIBus(%v).GetSlot(addr=%v)", bus, busAddr)
 	if busAddr != "" {
 		slot, _ := parseBusAddrString(busAddr)
 		if slot > 0 {
 			status := bus[slot]
 			if !status {
 				if err := bus.SetSlot(slot); err != nil {
-					log.Fatalf("Could not set PCI Bus slot: %v", err)
+					log.Debugf("Could not set PCI Bus slot: %v", err)
 				}
 				return slot
 			}
 		}
 	}
-	log.Infof("PCIBus(%v) no bus addr, find an open slot\n")
 	// should we error or allocate an open slot?
 
 	// start from the top end of PCI range and descend to PCI offset to avoid
@@ -76,7 +74,7 @@ func (bus *PCIBus) GetSlot(busAddr string) int {
 		status := bus[slot]
 		if !status {
 			if err := bus.SetSlot(slot); err != nil {
-				log.Fatalf("Could not set PCI Bus slot: %v", err)
+				log.Debugf("Could not set PCI Bus slot: %v", err)
 			}
 			return slot
 		}

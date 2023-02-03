@@ -257,6 +257,7 @@ func (cls *Cluster) Start() error {
 
 		err = vm.Start()
 		if err != nil {
+			vm.Stop()
 			cls.Status = ClusterStatusStopped
 			return fmt.Errorf("Failed to start VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
 		}
@@ -278,13 +279,17 @@ func (cls *Cluster) Stop() error {
 
 	log.Infof("Cluster.Stop, VM instances: %d", len(cls.Config.instances))
 	for _, vm := range cls.Config.instances {
-		log.Infof("Cluster.Stop, VM instance: %s, calling stop", vm.Config.Name)
-		err := vm.Stop()
-		if err != nil {
-			return fmt.Errorf("Failed to stop VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
-		}
-		cls.vmCount.Done()
+		go func() error {
+			log.Infof("Cluster.Stop, VM instance: %s, calling stop", vm.Config.Name)
+			err := vm.Stop()
+			if err != nil {
+				return fmt.Errorf("Failed to stop VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
+			}
+			cls.vmCount.Done()
+			return nil
+		}()
 	}
+	cls.vmCount.Wait()
 	cls.Status = ClusterStatusStopped
 	return nil
 }

@@ -30,14 +30,14 @@ type NetworkDef struct {
 }
 
 type NicDef struct {
-	BusAddr   string `yaml:"addr"`
-	Device    string `yaml:"device"`
-	ID        string `yaml:"id"`
-	Mac       string `yaml:"mac"`
-	IFName    string
-	Network   string
-	Ports     []PortRule `yaml:"ports"`
-	BootIndex int        `yaml:"bootindex"`
+	BusAddr   string     `yaml:"addr,omitempty"`
+	Device    string     `yaml:"device"`
+	ID        string     `yaml:"id",omitempty`
+	Mac       string     `yaml:"mac",omitempty`
+	ifname    string     `yaml:"ifname",omitempty`
+	network   string     `yaml:"network",omitempty`
+	Ports     []PortRule `yaml:"ports",omitempty`
+	BootIndex *int       `yaml:"bootindex,omitempty`
 }
 
 type VMNic struct {

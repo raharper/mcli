@@ -43,7 +43,7 @@ const (
 
 type VMDef struct {
 	Name       string     `yaml:"name"`
-	Cpus       uint32     `yaml:"cpus"`
+	Cpus       uint32     `yaml:"cpus" default:1`
 	Memory     uint32     `yaml:"memory"`
 	Serial     string     `yaml:"serial"`
 	Nics       []NicDef   `yaml:"nics"`
@@ -57,34 +57,58 @@ type VMDef struct {
 	Gui        bool       `yaml:"gui"`
 }
 
-var QemuTypeIndex map[string]int
-
-// Allocate the next number per Qemu Type string
-// This is use to create unique, increasing index integers used to
-// enumerate qemu id= parameters used to bind various objects together
-// on the QEMU command line: e.g
-//
-// -object iothread,id=iothread2
-// -drive id=drv1
-// -device scsi-hd,drive=drv1,iothread=iothread2
-//
-func getNextQemuIndex(qtype string) int {
-	currentIndex := 0
-	ok := false
-	if QemuTypeIndex == nil {
-		QemuTypeIndex = make(map[string]int)
+func (v *VMDef) adjustDiskBootIdx(qti *qcli.QemuTypeIndex) ([]int, error) {
+	allocated := []int{}
+	for n := range v.Disks {
+		disk := v.Disks[n]
+		if disk.BootIndex == nil {
+			idx := new(int)
+			*idx = qti.NextBootIndex()
+			disk.BootIndex = idx
+		} else {
+			if err := qti.SetBootIndex(*disk.BootIndex); err != nil {
+				return []int{}, fmt.Errorf("Failed to set Disk %s BootIndex %d: %s", disk.File, *disk.BootIndex, err)
+			}
+		}
+		allocated = append(allocated, *disk.BootIndex)
 	}
-	if currentIndex, ok = QemuTypeIndex[qtype]; !ok {
-		currentIndex = -1
-	}
-	QemuTypeIndex[qtype] = currentIndex + 1
-	return QemuTypeIndex[qtype]
+	return allocated, nil
 }
 
-func clearAllQemuIndex() {
-	for key := range QemuTypeIndex {
-		delete(QemuTypeIndex, key)
+func (v *VMDef) adjustNetBootIdx(qti *qcli.QemuTypeIndex) ([]int, error) {
+	allocated := []int{}
+	for n := range v.Nics {
+		nic := v.Nics[n]
+		if nic.BootIndex == nil {
+			idx := new(int)
+			*idx = qti.NextBootIndex()
+			nic.BootIndex = idx
+		} else {
+			if err := qti.SetBootIndex(*nic.BootIndex); err != nil {
+				return []int{}, fmt.Errorf("Failed to set Nic %s BootIndex %d: %s", nic.Device, *nic.BootIndex, err)
+			}
+		}
+		allocated = append(allocated, *nic.BootIndex)
 	}
+	return allocated, nil
+}
+
+func (v *VMDef) AdjustBootIndicies(qti *qcli.QemuTypeIndex) error {
+	allocated := []int{}
+
+	diskBoot, err := v.adjustDiskBootIdx(qti)
+	if err != nil {
+		return fmt.Errorf("Error setting disk bootindex values: %s", err)
+	}
+	allocated = append(allocated, diskBoot...)
+
+	netBoot, err := v.adjustNetBootIdx(qti)
+	if err != nil {
+		return fmt.Errorf("Error setting nic bootindex values: %s", err)
+	}
+	allocated = append(allocated, netBoot...)
+
+	return nil
 }
 
 // TODO: Rename fields
@@ -121,7 +145,7 @@ func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (VM, error) 
 		Ctx:    ctx,
 		Cancel: cancelFn,
 		State:  VMInit,
-		Cmd:    exec.Command(qcfg.Path, cmdParams...),
+		Cmd:    exec.CommandContext(ctx, qcfg.Path, cmdParams...),
 		qcli:   qcfg,
 		RunDir: runDir,
 	}, nil
@@ -238,16 +262,25 @@ func (v *VM) StartQMP() error {
 }
 
 func (v *VM) BackgroundRun() error {
-	// start vm command in background goroutine
-	err := v.runVM()
-	if err != nil {
-		return err
-	}
 
-	err = v.StartQMP()
-	if err != nil {
-		return err
-	}
+	// start vm command in background goroutine
+	go func() {
+		log.Infof("VM:%s backgrounding runVM()", v.Name())
+		err := v.runVM()
+		if err != nil {
+			log.Errorf("runVM error: %s", err)
+			return
+		}
+	}()
+
+	go func() {
+		log.Infof("VM:%s backgrounding StartQMP()", v.Name())
+		err := v.StartQMP()
+		if err != nil {
+			log.Errorf("StartQMP error: %s", err)
+			return
+		}
+	}()
 
 	return nil
 }
@@ -257,6 +290,7 @@ func (v *VM) Start() error {
 	err := v.BackgroundRun()
 	if err != nil {
 		log.Errorf("VM:%s failed to start VM:%s %s", v.Name(), err)
+		v.Stop()
 		return err
 	}
 	v.State = VMStarted
@@ -264,28 +298,39 @@ func (v *VM) Start() error {
 }
 
 func (v *VM) Stop() error {
-	log.Infof("VM:%s stopping...\n", v.Name())
+	pid := v.Cmd.Process.Pid
+	status := v.Cmd.ProcessState.String()
+	log.Infof("VM:%s PID:%d Status:%s stopping...\n", v.Name(), pid, status)
 
-	// FIXME: configurable?
-	// Try shutdown via QMP, wait up to 10 seconds before force shutting down
-	timeout := time.Second * 10
+	if v.qmp != nil {
+		log.Infof("VM:%s PID:%d qmp is not nill, sending qmp command", v.Name(), pid)
+		// FIXME: configurable?
+		// Try shutdown via QMP, wait up to 10 seconds before force shutting down
+		timeout := time.Second * 10
 
-	// Let's try to shutdown the VM.  If it hasn't shutdown in 10 seconds we'll
-	// send a quit message.
-	log.Infof("VM:%s trying graceful shutdown via system_powerdown (%s timeout before cancelling)..", v.Name(), timeout.String())
-	err := v.qmp.ExecuteSystemPowerdown(v.Ctx)
-	if err != nil {
-		log.Errorf("VM:%s error:%s", v.Name(), err.Error())
+		// Let's try to shutdown the VM.  If it hasn't shutdown in 10 seconds we'll
+		// send a quit message.
+		log.Infof("VM:%s trying graceful shutdown via system_powerdown (%s timeout before cancelling)..", v.Name(), timeout.String())
+		err := v.qmp.ExecuteSystemPowerdown(v.Ctx)
+		if err != nil {
+			log.Errorf("VM:%s error:%s", v.Name(), err.Error())
+		}
+
+		select {
+		case <-v.Ctx.Done():
+			log.Infof("VM:%s has exited without cancel", v.Name())
+		case <-time.After(timeout):
+			log.Warnf("VM:%s timed out, killing via cancel context...", v.Name())
+			v.Cancel()
+			log.Warnf("VM:%s cancel() complete")
+		}
+		v.wg.Wait()
+	} else {
+		log.Infof("VM:%s PID:%d qmp is not set, killing pid...", v.Name(), pid)
+		if err := v.Cmd.Process.Kill(); err != nil {
+			log.Errorf("Error killing VM:%s PID:%d Error:%v", v.Name(), pid, err)
+		}
 	}
-
-	select {
-	case <-v.Ctx.Done():
-		log.Infof("VM:%s has exited without cancel", v.Name())
-	case <-time.After(timeout):
-		log.Warnf("VM:%s timed out, killing via cancel context...", v.Name())
-		v.Cancel()
-	}
-	v.wg.Wait()
 	v.State = VMStopped
 	return nil
 }
