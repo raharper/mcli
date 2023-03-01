@@ -58,5 +58,5 @@ func doStop(cmd *cobra.Command, args []string) {
 
 func init() {
 	rootCmd.AddCommand(stopCmd)
-	rootCmd.PersistentFlags().BoolP("force", "f", false, "shutdown the machine forcefully")
+	stopCmd.PersistentFlags().BoolP("force", "f", false, "shutdown the machine forcefully")
 }
