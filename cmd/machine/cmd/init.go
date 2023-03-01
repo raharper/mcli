@@ -37,6 +37,29 @@ var initCmd = &cobra.Command{
 	Run:   doInit,
 }
 
+const defaultMachine = `
+type: kvm
+ephemeral: false
+config:
+  cpus: 2
+  memory: 2048
+  uefi: true
+  tpm: true
+  tpm-version: 2.0
+  secureboot: false
+  disks:
+    - file: rootdisk.qcow2
+      format: qcow2
+      type: ssd
+      attach: virtio
+      bootindex: 0
+      size: 50GiB
+  nics:
+    - id: nic0
+      device: vrtio-net
+      network: user
+`
+
 func doInit(cmd *cobra.Command, args []string) {
 	fileName := cmd.Flag("file").Value.String()
 	// Hi cobra, this is awkward...  why isn't there .Value.Bool()?
@@ -47,22 +70,25 @@ func doInit(cmd *cobra.Command, args []string) {
 	} else {
 		machineName = petname.Generate(petNameWords, petNameSep)
 	}
-	fmt.Println("  machineName:", machineName)
 
 	if err := DoCreateMachine(machineName, fileName, editFile); err != nil {
-		panic("Failed to create a machine")
+		panic(fmt.Sprintf("Failed to create a machine: %s", err))
 	}
 }
 
 func DoCreateMachine(machineName, fileName string, editFile bool) error {
 	var err error
-	var machineBytes []byte
 	onTerm := termios.IsTerminal(unix.Stdin)
-	newMachine := api.Machine{
-		Name:      machineName,
-		Ephemeral: true,
-		Status:    api.MachineStatusStopped,
+	machineBytes := []byte(defaultMachine)
+	newMachine := api.Machine{}
+
+	err = yaml.Unmarshal(machineBytes, &newMachine)
+	if err != nil {
+		return fmt.Errorf("Failed to unmarshal default machine config: %s", err)
 	}
+	newMachine.Name = machineName
+	newMachine.Config.Name = machineName
+
 	fmt.Printf("Creating machine %s ...\n", machineName)
 
 	// check if edit is set whether we're a terminal or not
