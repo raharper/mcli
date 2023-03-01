@@ -251,6 +251,9 @@ type Config struct {
 	// VGA is the qemu VGA mode.
 	VGA string `yaml:"vga-mode"`
 
+	// SpiceDevice is the qemu spice protocol device for remote display
+	SpiceDevice SpiceDevice `yaml:"spice"`
+
 	// Kernel is the guest kernel configuration.
 	Kernel Kernel `yaml:"kernel"`
 
@@ -439,6 +442,12 @@ func (config *Config) appendVGA() {
 	}
 }
 
+func (config *Config) appendSpice() {
+	if config.SpiceDevice.Port != "" || config.SpiceDevice.TLSPort != "" {
+		config.devices = append(config.devices, config.SpiceDevice)
+	}
+}
+
 func (config *Config) appendKernel() {
 	if config.Kernel.Path != "" {
 		config.qemuParams = append(config.qemuParams, "-kernel")
@@ -623,6 +632,7 @@ func ConfigureParams(config *Config, logger QMPLog) ([]string, error) {
 	config.appendUUID()
 	config.appendMachine()
 	config.appendCPUModel()
+	config.appendSpice()
 	err = config.appendQMPSockets()
 	if err != nil {
 		return []string{}, err

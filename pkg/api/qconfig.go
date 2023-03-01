@@ -26,7 +26,7 @@ func GetKvmPath() (string, error) {
 	return "", fmt.Errorf("Failed to find QEMU/KVM binary [%s] in paths [%s]\n", emulators, paths)
 }
 
-func NewDefaultConfig(name string, numCpus, numMemMB uint32, uefiVarsPath string) (*qcli.Config, error) {
+func NewDefaultConfig(name string, numCpus, numMemMB uint32, runDir string) (*qcli.Config, error) {
 	smp := qcli.SMP{CPUs: numCpus}
 	if numCpus < 1 {
 		smp.CPUs = 4
@@ -43,13 +43,6 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32, uefiVarsPath string
 	if err != nil {
 		return &qcli.Config{}, fmt.Errorf("Failed creating new default config: %s", err)
 	}
-
-	// FIXME: secureboot boolean
-	uefiDev, err := qcli.NewSystemUEFIFirmwareDevice(false)
-	if err != nil {
-		return &qcli.Config{}, fmt.Errorf("failed to create a UEFI Firmware Device: %s", err)
-	}
-	log.Infof("New UEFI Firmware Device: %+v", uefiDev)
 
 	c := &qcli.Config{
 		Name: name,
@@ -72,11 +65,36 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32, uefiVarsPath string
 				Filename:  qcli.RngDevUrandom,
 			},
 		},
+		CharDevices: []qcli.CharDevice{
+			qcli.CharDevice{
+				Driver:  qcli.LegacySerial,
+				Backend: qcli.Socket,
+				ID:      "serial0",
+				Path:    filepath.Join(runDir, "console.sock"),
+			},
+			qcli.CharDevice{
+				Driver:  qcli.LegacySerial,
+				Backend: qcli.Socket,
+				ID:      "monitor0",
+				Path:    filepath.Join(runDir, "monitor.sock"),
+			},
+		},
+		LegacySerialDevices: []qcli.LegacySerialDevice{
+			qcli.LegacySerialDevice{
+				ChardevID: "serial0",
+			},
+		},
+		MonitorDevices: []qcli.MonitorDevice{
+			qcli.MonitorDevice{
+				ChardevID: "monitor0",
+			},
+		},
 		QMPSockets: []qcli.QMPSocket{
 			qcli.QMPSocket{
 				Type:   "unix",
 				Server: true,
 				NoWait: true,
+				Name:   filepath.Join(runDir, "qmp.sock"),
 			},
 		},
 		PCIeRootPortDevices: []qcli.PCIeRootPortDevice{
@@ -99,11 +117,19 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32, uefiVarsPath string
 				Multifunction: false,
 			},
 		},
+		VGA: "qxl",
+		SpiceDevice: qcli.SpiceDevice{
+			Port:             fmt.Sprintf("%d", NextFreePort(qcli.RemoteDisplayPortBase)),
+			DisableTicketing: true,
+		},
 		GlobalParams: []string{
 			"ICH9-LPC.disable_s3=1",
 			"driver=cfi.pflash01,property=secure,value=on",
 		},
-		UEFIFirmwareDevices: []qcli.UEFIFirmwareDevice{*uefiDev},
+		Knobs: qcli.Knobs{
+			NoHPET:    true,
+			NoGraphic: true,
+		},
 	}
 
 	return c, nil
@@ -217,8 +243,31 @@ func (nd NicDef) QNetDevice(qti *qcli.QemuTypeIndex) (qcli.NetDevice, error) {
 	return ndev, nil
 }
 
+func ConfigureUEFIVars(c *qcli.Config, srcVars, runDir string) error {
+	// FIXME: secureboot boolean
+	uefiDev, err := qcli.NewSystemUEFIFirmwareDevice(false)
+	if err != nil {
+		return fmt.Errorf("failed to create a UEFI Firmware Device: %s", err)
+	}
+
+	src := uefiDev.Vars
+	if len(srcVars) > 0 && PathExists(srcVars) {
+		src = srcVars
+	}
+
+	dest := filepath.Join(runDir, qcli.UEFIVarsFileName)
+	log.Infof("copying %q -> %q", src, dest)
+	if err := CopyFileBits(src, dest); err != nil {
+		return fmt.Errorf("Failed to copy UEFI Vars from '%s' to '%q': %s", src, dest, err)
+	}
+	uefiDev.Vars = dest
+	c.UEFIFirmwareDevices = []qcli.UEFIFirmwareDevice{*uefiDev}
+	log.Infof("New UEFI Firmware Device: %+v", uefiDev)
+	return nil
+}
+
 func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
-	c, err := NewDefaultConfig(v.Name, v.Cpus, v.Memory, v.UEFIVars)
+	c, err := NewDefaultConfig(v.Name, v.Cpus, v.Memory, runDir)
 	if err != nil {
 		return c, err
 	}
@@ -230,20 +279,10 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 		}
 	}
 
-	// copy the source UefiVars to runDir and update config
-	targetUEFIVars := filepath.Join(runDir, qcli.UEFIVarsFileName)
-	srcUEFIVars := c.UEFIFirmwareDevices[0].Vars
-	if PathExists(v.UEFIVars) {
-		srcUEFIVars = v.UEFIVars
+	err = ConfigureUEFIVars(c, v.UEFIVars, runDir)
+	if err != nil {
+		return c, fmt.Errorf("Error configuring UEFI Vars: %s", err)
 	}
-	log.Infof("copying %q -> %q", srcUEFIVars, targetUEFIVars)
-	if err := CopyFileBits(srcUEFIVars, targetUEFIVars); err != nil {
-		return c, fmt.Errorf("Failed to copy UEFIVars from '%s' to '%q': %s", srcUEFIVars, targetUEFIVars, err)
-	}
-	c.UEFIFirmwareDevices[0].Vars = targetUEFIVars
-
-	qmpSocketName := filepath.Join(runDir, "qmp.sock")
-	c.QMPSockets[0].Name = qmpSocketName
 
 	if v.Cdrom != "" {
 		qd := QemuDisk{

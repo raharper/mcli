@@ -13,6 +13,7 @@ func TestAppendVirtioRng(t *testing.T) {
 		ID:      "rng0",
 		Driver:  VirtioRng,
 		ROMFile: romfile,
+		Addr:    "3",
 	}
 
 	deviceString += "-" + rngDevice.Transport.getName(nil) + ",rng=rng0,addr=0x03"

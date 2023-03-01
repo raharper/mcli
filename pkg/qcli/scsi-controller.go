@@ -100,7 +100,7 @@ func (scsiCon SCSIControllerDevice) QemuParams(config *Config) []string {
 	if scsiCon.IOThread != "" {
 		deviceParams = append(deviceParams, fmt.Sprintf("iothread=%s", scsiCon.IOThread))
 		// FIXME, add in tuneables
-		objectParams = append(objectParams, "iothread,poll-max-ns=32,id=%s", scsiCon.IOThread)
+		objectParams = append(objectParams, fmt.Sprintf("iothread,poll-max-ns=32,id=%s", scsiCon.IOThread))
 	}
 	if scsiCon.Transport.isVirtioPCI(config) && scsiCon.ROMFile != "" {
 		deviceParams = append(deviceParams, fmt.Sprintf("romfile=%s", scsiCon.ROMFile))
@@ -115,8 +115,10 @@ func (scsiCon SCSIControllerDevice) QemuParams(config *Config) []string {
 
 	qemuParams = append(qemuParams, "-device")
 	qemuParams = append(qemuParams, strings.Join(deviceParams, ","))
-	qemuParams = append(qemuParams, "-object")
-	qemuParams = append(qemuParams, strings.Join(objectParams, ","))
+	if len(objectParams) > 0 {
+		qemuParams = append(qemuParams, "-object")
+		qemuParams = append(qemuParams, strings.Join(objectParams, ","))
+	}
 	return qemuParams
 }
 
