@@ -37,7 +37,7 @@ import (
 type Controller struct {
 	Config            *MachineDaemonConfig
 	Router            *gin.Engine
-	ClusterController ClusterController
+	MachineController MachineController
 	Server            *http.Server
 	wgShutDown        *sync.WaitGroup
 	portNumber        int
@@ -53,24 +53,24 @@ func NewController(config *MachineDaemonConfig) *Controller {
 }
 
 func (c *Controller) Run(ctx context.Context) error {
-	// load existing clusters
-	clusterDir := filepath.Join(c.Config.ConfigDirectory, "clusters")
-	if PathExists(clusterDir) {
-		log.Infof("Loading saved cluster configs...")
-		err := filepath.Walk(clusterDir, func(path string, info os.FileInfo, err error) error {
+	// load existing machines
+	machineDir := filepath.Join(c.Config.ConfigDirectory, "machines")
+	if PathExists(machineDir) {
+		log.Infof("Loading saved machine configs...")
+		err := filepath.Walk(machineDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
 			if info.IsDir() {
-				clusterConf := filepath.Join(path, "machine.yaml")
-				if PathExists(clusterConf) {
-					newCluster, err := LoadConfig(clusterConf)
+				machineConf := filepath.Join(path, "machine.yaml")
+				if PathExists(machineConf) {
+					newMachine, err := LoadConfig(machineConf)
 					if err != nil {
 						return err
 					}
-					newCluster.ctx = c.Config.GetConfigContext()
-					log.Infof("  loaded cluster %s", newCluster.Name)
-					c.ClusterController.Clusters = append(c.ClusterController.Clusters, newCluster)
+					newMachine.ctx = c.Config.GetConfigContext()
+					log.Infof("  loaded machine %s", newMachine.Name)
+					c.MachineController.Machines = append(c.MachineController.Machines, newMachine)
 				}
 			}
 			return nil
@@ -116,11 +116,11 @@ func (c *Controller) Run(ctx context.Context) error {
 	return c.Server.Serve(listener)
 }
 
-func (c *Controller) InitClusterController(ctx context.Context) error {
-	c.ClusterController = ClusterController{}
+func (c *Controller) InitMachineController(ctx context.Context) error {
+	c.MachineController = MachineController{}
 
 	// TODO
-	// look for serialized Cluster configuration files in data dir
+	// look for serialized Machine configuration files in data dir
 	// for each one, read them in and add to the Controller
 	return nil
 }
@@ -174,21 +174,27 @@ func EnsureDir(dir string) error {
 //  - if src is a symlink, copies content, not link.
 //  - does not invoke sh.
 func CopyFileBits(src, dest string) error {
+	if len(src) == 0 {
+		return fmt.Errorf("Source file is empty string")
+	}
+	if len(dest) == 0 {
+		return fmt.Errorf("Destination file is empty string")
+	}
 	in, err := os.Open(src)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to open source file %q: %s", src, err)
 	}
 	defer in.Close()
 
 	out, err := os.OpenFile(dest, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to open destination file %q", dest, err)
 	}
 	defer out.Close()
 
 	_, err = io.Copy(out, in)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed while copying %q -> %q: %s", src, dest, err)
 	}
 	return out.Close()
 }

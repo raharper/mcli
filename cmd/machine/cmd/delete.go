@@ -24,24 +24,24 @@ import (
 
 // deleteCmd represents the list command
 var deleteCmd = &cobra.Command{
-	Use:        "delete <cluster_name>",
+	Use:        "delete <machine_name>",
 	Args:       cobra.MinimumNArgs(1),
-	ArgAliases: []string{"clusterName"},
-	Short:      "delete the specified cluster",
-	Long:       `delete the specified cluster if it exists`,
+	ArgAliases: []string{"machineName"},
+	Short:      "delete the specified machine",
+	Long:       `delete the specified machine if it exists`,
 	Run:        doDelete,
 }
 
 func doDelete(cmd *cobra.Command, args []string) {
-	clusterName := args[0]
-	endpoint := fmt.Sprintf("clusters/%s", clusterName)
+	machineName := args[0]
+	endpoint := fmt.Sprintf("machines/%s", machineName)
 	deleteURL := api.GetAPIURL(endpoint)
 	if len(deleteURL) == 0 {
-		panic("Failed to get DELETE API URL for 'clusters' endpoint")
+		panic("Failed to get DELETE API URL for 'machines' endpoint")
 	}
 	resp, err := rootclient.R().EnableTrace().Delete(deleteURL)
 	if err != nil {
-		fmt.Printf("Failed to delete cluster '%s': %s\n", clusterName, err)
+		fmt.Printf("Failed to delete machine '%s': %s\n", machineName, err)
 		panic(err)
 	}
 	fmt.Println(resp.Status())

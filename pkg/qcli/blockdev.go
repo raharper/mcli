@@ -113,6 +113,8 @@ type BlockDevice struct {
 	// BusAddr is the bus address for some block devices (virtio-blk-pci)
 	BusAddr string `yaml:"busaddr"`
 
+	Bus string `yaml:"bus"`
+
 	// Serial is the 21-character disk serial value
 	Serial string `yaml:"serial"`
 
@@ -239,6 +241,11 @@ func (blkdev BlockDevice) QemuParams(config *Config) []string {
 		addr := config.pciBusSlots.GetSlot(blkdev.BusAddr)
 		if addr > 0 {
 			deviceParams = append(deviceParams, fmt.Sprintf("addr=0x%02x", addr))
+			bus := "pcie.0"
+			if blkdev.Bus != "" {
+				bus = blkdev.Bus
+			}
+			deviceParams = append(deviceParams, fmt.Sprintf("bus=%s", bus))
 		}
 	}
 

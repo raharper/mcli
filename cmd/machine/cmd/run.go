@@ -23,27 +23,27 @@ import (
 
 // runCmd represents the run command
 var runCmd = &cobra.Command{
-	Use:        "run <cluster_name> <cluster config>",
+	Use:        "run <machine_name> <machine config>",
 	Args:       cobra.MinimumNArgs(2),
-	ArgAliases: []string{"clusterName"},
-	Short:      "create and start a new cluster",
-	Long:       `create a new cluster from config and start the cluster.`,
+	ArgAliases: []string{"machineName"},
+	Short:      "create and start a new machine",
+	Long:       `create a new machine from config and start the machine.`,
 	Run:        doRun,
 }
 
-// Initialize a new cluster from config file and then start it up
+// Initialize a new machine from config file and then start it up
 func doRun(cmd *cobra.Command, args []string) {
-	clusterName := args[0]
-	clusterConfig := args[1]
-	editCluster := false
+	machineName := args[0]
+	machineConfig := args[1]
+	editMachine := false
 
 	// FIXME: handle mismatch between name in arg and value in config file
-	if err := DoCreateCluster(clusterName, clusterConfig, editCluster); err != nil {
-		panic(fmt.Sprintf("Failed to create cluster '%s' from config '%s': %s", clusterName, clusterConfig, err))
+	if err := DoCreateMachine(machineName, machineConfig, editMachine); err != nil {
+		panic(fmt.Sprintf("Failed to create machine '%s' from config '%s': %s", machineName, machineConfig, err))
 	}
 
-	if err := DoStartCluster(clusterName); err != nil {
-		panic(fmt.Sprintf("Failed to start cluster '%s' from config '%s': %s", clusterName, clusterConfig, err))
+	if err := DoStartMachine(machineName); err != nil {
+		panic(fmt.Sprintf("Failed to start machine '%s' from config '%s': %s", machineName, machineConfig, err))
 	}
 }
 

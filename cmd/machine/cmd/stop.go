@@ -24,34 +24,39 @@ import (
 
 // stopCmd represents the stop command
 var stopCmd = &cobra.Command{
-	Use:        "stop <cluster_name>",
+	Use:        "stop <machine_name>",
 	Args:       cobra.MinimumNArgs(1),
-	ArgAliases: []string{"clusterName"},
-	Short:      "stop the specified cluster",
-	Long:       `stop the specified cluster if it exists`,
+	ArgAliases: []string{"machineName"},
+	Short:      "stop the specified machine",
+	Long:       `stop the specified machine if it exists`,
 	Run:        doStop,
 }
 
-// need to see about stopping single machine under cluster and whole cluster
+// need to see about stopping single machine under machine and whole machine
 func doStop(cmd *cobra.Command, args []string) {
-	clusterName := args[0]
+	machineName := args[0]
+	// Hi cobra, this is awkward...  why isn't there .Value.Bool()?
+	forceStop, _ := cmd.Flags().GetBool("force")
 	var request struct {
 		Status string `json:"status"`
+		Force  bool   `json:"force"`
 	}
 	request.Status = "stopped"
+	request.Force = forceStop
 
-	endpoint := fmt.Sprintf("clusters/%s/stop", clusterName)
+	endpoint := fmt.Sprintf("machines/%s/stop", machineName)
 	stopURL := api.GetAPIURL(endpoint)
 	if len(stopURL) == 0 {
-		panic(fmt.Sprintf("Failed to get API URL for 'clusters/%s/stop' endpoint", clusterName))
+		panic(fmt.Sprintf("Failed to get API URL for 'machines/%s/stop' endpoint", machineName))
 	}
 	resp, err := rootclient.R().EnableTrace().SetBody(request).Post(stopURL)
 	if err != nil {
-		panic(fmt.Sprintf("Failed POST to 'clusters/%s/stop' endpoint: %s", clusterName, err))
+		panic(fmt.Sprintf("Failed POST to 'machines/%s/stop' endpoint: %s", machineName, err))
 	}
 	fmt.Printf("%s %s\n", resp, resp.Status())
 }
 
 func init() {
 	rootCmd.AddCommand(stopCmd)
+	rootCmd.PersistentFlags().BoolP("force", "f", false, "shutdown the machine forcefully")
 }

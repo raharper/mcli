@@ -29,22 +29,22 @@ import (
 
 // editCmd represents the edit command
 var editCmd = &cobra.Command{
-	Use:        "edit <cluster name>",
+	Use:        "edit <machine name>",
 	Args:       cobra.MinimumNArgs(1),
-	ArgAliases: []string{"clusterName"},
-	Short:      "edit a cluster's configuration file",
-	Long:       `Read the cluster configuration into an editor for modification`,
+	ArgAliases: []string{"machineName"},
+	Short:      "edit a machine's configuration file",
+	Long:       `Read the machine configuration into an editor for modification`,
 	Run:        doEdit,
 }
 
 // edit requires one to:
-// - GET the cluster configuration from REST API
+// - GET the machine configuration from REST API
 // - render this to a temp file
 // - invoke $EDITOR to allow user to make changes
 //
 // Option 1:
 // - (optionally) before posting, run JSON validator on the new file?
-// - PATCH/UPDATE the cluster configuration back to API
+// - PATCH/UPDATE the machine configuration back to API
 //   (and symantically what does that mean if the instance is running)
 //
 // Option 2:
@@ -52,39 +52,39 @@ var editCmd = &cobra.Command{
 //   via PATCH/UPDATE operations.
 //
 func doEdit(cmd *cobra.Command, args []string) {
-	clusterName := args[0]
-	clusters, err := getClusters()
+	machineName := args[0]
+	machines, err := getMachines()
 	if err != nil {
 		panic(err)
 	}
 
-	var clusterBytes []byte
+	var machineBytes []byte
 	onTerm := termios.IsTerminal(unix.Stdin)
-	editCluster := &api.Cluster{}
+	editMachine := &api.Machine{}
 
-	for _, cluster := range clusters {
-		if cluster.Name == clusterName {
-			editCluster = &cluster
+	for _, machine := range machines {
+		if machine.Name == machineName {
+			editMachine = &machine
 			break
 		}
 	}
-	if editCluster.Name == "" {
-		panic(fmt.Sprintf("Failed to find cluster '%s'", clusterName))
+	if editMachine.Name == "" {
+		panic(fmt.Sprintf("Failed to find machine '%s'", machineName))
 	}
 
-	clusterBytes, err = yaml.Marshal(editCluster)
+	machineBytes, err = yaml.Marshal(editMachine)
 	if err != nil {
-		panic(fmt.Sprintf("Error marshalling cluster '%s'", clusterName))
+		panic(fmt.Sprintf("Error marshalling machine '%s'", machineName))
 	}
 
-	clusterBytes, err = shared.TextEditor("", clusterBytes)
+	machineBytes, err = shared.TextEditor("", machineBytes)
 	if err != nil {
 		panic("Error calling editor")
 	}
 
-	newCluster := api.Cluster{Name: clusterName}
+	newMachine := api.Machine{Name: machineName}
 	for {
-		if err = yaml.Unmarshal(clusterBytes, &newCluster); err == nil {
+		if err = yaml.Unmarshal(machineBytes, &newMachine); err == nil {
 			break
 		}
 		if !onTerm {
@@ -96,14 +96,14 @@ func doEdit(cmd *cobra.Command, args []string) {
 		if err != nil {
 			panic(fmt.Sprintf("Error reading reply: %s", err))
 		}
-		clusterBytes, err = shared.TextEditor("", clusterBytes)
+		machineBytes, err = shared.TextEditor("", machineBytes)
 		if err != nil {
 			panic(fmt.Sprintf("Error calling editor: %s", err))
 		}
 	}
 	// persist config if not ephemeral
 
-	err = putCluster(newCluster)
+	err = putMachine(newMachine)
 	if err != nil {
 		panic(err.Error())
 	}

@@ -35,53 +35,53 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 }
 
 func (rh *RouteHandler) SetupRoutes() {
-	rh.c.Router.GET("/clusters", rh.GetClusters)
-	rh.c.Router.POST("/clusters", rh.PostCluster)
-	rh.c.Router.PUT("/clusters/:clustername", rh.UpdateCluster)
-	rh.c.Router.DELETE("/clusters/:clustername", rh.DeleteCluster)
-	rh.c.Router.POST("/clusters/:clustername/start", rh.StartCluster)
-	rh.c.Router.POST("/clusters/:clustername/stop", rh.StopCluster)
+	rh.c.Router.GET("/machines", rh.GetMachines)
+	rh.c.Router.POST("/machines", rh.PostMachine)
+	rh.c.Router.PUT("/machines/:machinename", rh.UpdateMachine)
+	rh.c.Router.DELETE("/machines/:machinename", rh.DeleteMachine)
+	rh.c.Router.POST("/machines/:machinename/start", rh.StartMachine)
+	rh.c.Router.POST("/machines/:machinename/stop", rh.StopMachine)
 }
 
-func (rh *RouteHandler) GetClusters(ctx *gin.Context) {
-	ctx.IndentedJSON(http.StatusOK, rh.c.ClusterController.GetClusters())
+func (rh *RouteHandler) GetMachines(ctx *gin.Context) {
+	ctx.IndentedJSON(http.StatusOK, rh.c.MachineController.GetMachines())
 }
 
-func (rh *RouteHandler) PostCluster(ctx *gin.Context) {
-	var newCluster Cluster
-	if err := ctx.BindJSON(&newCluster); err != nil {
+func (rh *RouteHandler) PostMachine(ctx *gin.Context) {
+	var newMachine Machine
+	if err := ctx.BindJSON(&newMachine); err != nil {
 		return
 	}
 	cfg := rh.c.Config
-	if err := rh.c.ClusterController.AddCluster(newCluster, cfg); err != nil {
+	if err := rh.c.MachineController.AddMachine(newMachine, cfg); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}
 }
 
-func (rh *RouteHandler) DeleteCluster(ctx *gin.Context) {
-	clusterName := ctx.Param("clustername")
+func (rh *RouteHandler) DeleteMachine(ctx *gin.Context) {
+	machineName := ctx.Param("machinename")
 	cfg := rh.c.Config
-	// TODO refuse if cluster status is running, handle --force param
-	err := rh.c.ClusterController.DeleteCluster(clusterName, cfg)
+	// TODO refuse if machine status is running, handle --force param
+	err := rh.c.MachineController.DeleteMachine(machineName, cfg)
 	if err != nil {
-		log.Errorf("Failed to delete cluster '%s': %s\n", clusterName, err)
+		log.Errorf("Failed to delete machine '%s': %s\n", machineName, err)
 	}
 }
 
-func (rh *RouteHandler) UpdateCluster(ctx *gin.Context) {
-	var newCluster Cluster
-	if err := ctx.ShouldBindJSON(&newCluster); err != nil {
+func (rh *RouteHandler) UpdateMachine(ctx *gin.Context) {
+	var newMachine Machine
+	if err := ctx.ShouldBindJSON(&newMachine); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	cfg := rh.c.Config
-	if err := rh.c.ClusterController.UpdateCluster(newCluster, cfg); err != nil {
+	if err := rh.c.MachineController.UpdateMachine(newMachine, cfg); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}
 }
 
-func (rh *RouteHandler) StartCluster(ctx *gin.Context) {
-	clusterName := ctx.Param("clustername")
+func (rh *RouteHandler) StartMachine(ctx *gin.Context) {
+	machineName := ctx.Param("machinename")
 	var request struct {
 		Status string `json:"status"`
 	}
@@ -90,7 +90,7 @@ func (rh *RouteHandler) StartCluster(ctx *gin.Context) {
 		return
 	}
 	if request.Status == "running" {
-		if err := rh.c.ClusterController.StartCluster(clusterName); err != nil {
+		if err := rh.c.MachineController.StartMachine(machineName); err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		}
 	} else {
@@ -100,17 +100,18 @@ func (rh *RouteHandler) StartCluster(ctx *gin.Context) {
 	}
 }
 
-func (rh *RouteHandler) StopCluster(ctx *gin.Context) {
-	clusterName := ctx.Param("clustername")
+func (rh *RouteHandler) StopMachine(ctx *gin.Context) {
+	machineName := ctx.Param("machinename")
 	var request struct {
 		Status string `json:"status"`
+		Force  bool   `json:"force"`
 	}
 	if err := ctx.ShouldBindJSON(&request); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if request.Status == "stopped" {
-		if err := rh.c.ClusterController.StopCluster(clusterName); err != nil {
+		if err := rh.c.MachineController.StopMachine(machineName, request.Force); err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		}
 	} else {

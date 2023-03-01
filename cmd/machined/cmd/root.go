@@ -35,9 +35,9 @@ var cfgFile string
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "machined",
-	Short: "A daemon to handle the lifecycle of machine clusters",
+	Short: "A daemon to handle the lifecycle of machine machines",
 	Long: `The daemon runs a RESTful service to interact with and manage
-machine clusters.`,
+machine machines.`,
 	Run: doServerRun,
 }
 
@@ -55,10 +55,10 @@ func doServerRun(cmd *cobra.Command, args []string) {
 	}()
 	<-ctx.Done()
 	log.Infof("machined shutting down gracefully, press Ctrl+C again to force")
-	log.Infof("machined notifying all clusters to shutdown... (FIXME)")
+	log.Infof("machined notifying all machines to shutdown... (FIXME)")
 	log.Infof("machined waiting up to %s seconds\n", "30")
-	if err := ctrl.ClusterController.StopClusters(); err != nil {
-		log.Errorf("Failure during cluster shutdown: %s\n", err)
+	if err := ctrl.MachineController.StopMachines(); err != nil {
+		log.Errorf("Failure during machine shutdown: %s\n", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
@@ -86,8 +86,8 @@ func doServerRun(cmd *cobra.Command, args []string) {
 //
 // 	fmt.Println("machined service running on: %s", unixSocket)
 // 	router := gin.Default()
-// 	router.GET("/clusters", api.GetClusters)
-// 	router.POST("/clusters", api.PostClusters)
+// 	router.GET("/machines", api.GetMachines)
+// 	router.POST("/machines", api.PostMachines)
 //
 // 	// re-implement gin.Engine.RunUnix() so we can set the context ourselves
 // 	listener, err := net.Listen("unix", unixSocket)
@@ -108,10 +108,10 @@ func doServerRun(cmd *cobra.Command, args []string) {
 // 	// restore default behavior on the interrupt signal and nitify user of
 // 	// shutdown
 // 	fmt.Println("machined shutting down gracefully, press Ctrl+C again to force")
-// 	fmt.Println("machined notifying all clusters to shutdown... (FIXME)")
-// 	fmt.Printf("machined waiting up to %s seconds\n", ClusterShutdownTimeoutSeconds)
+// 	fmt.Println("machined notifying all machines to shutdown... (FIXME)")
+// 	fmt.Printf("machined waiting up to %s seconds\n", MachineShutdownTimeoutSeconds)
 //
-// 	ctx, cancel := context.WithTimeout(context.Background(), ClusterShutdownTimeoutSeconds)
+// 	ctx, cancel := context.WithTimeout(context.Background(), MachineShutdownTimeoutSeconds)
 // 	defer cancel()
 // 	if err := srv.Shutdown(ctx); err != nil {
 // 		panic(fmt.Sprintf("machined forced to shutdown: %s", err))
@@ -158,5 +158,5 @@ func initConfig() {
 
 	// TODO:
 	// parse the config
-	// for each on-disk cluster, read in the yaml and post the struct
+	// for each on-disk machine, read in the yaml and post the struct
 }

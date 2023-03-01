@@ -50,7 +50,7 @@ type VMDef struct {
 	Disks      []QemuDisk `yaml:"disks"`
 	Boot       string     `yaml:"boot"`
 	Cdrom      string     `yaml:"cdrom"`
-	UefiVars   string     `yaml:"uefi-vars"`
+	UEFIVars   string     `yaml:"uefi-vars"`
 	TPM        bool       `yaml:"tpm"`
 	TPMVersion string     `yaml:"tpm-version"`
 	SecureBoot bool       `yaml:"secure-boot"`
@@ -121,6 +121,7 @@ type VM struct {
 	Cmd    *exec.Cmd
 	qcli   *qcli.Config
 	qmp    *qcli.QMP
+	qmpCh  chan struct{}
 	wg     sync.WaitGroup
 }
 
@@ -162,7 +163,9 @@ func (v *VM) runVM() error {
 	v.wg.Add(1)
 	go func() {
 		var stderr bytes.Buffer
-		defer v.wg.Done()
+		defer func() {
+			v.wg.Done()
+		}()
 
 		log.Infof("VM:%s starting QEMU process", v.Name())
 		v.Cmd.Stderr = &stderr
@@ -196,7 +199,6 @@ func (v *VM) runVM() error {
 func (v *VM) StartQMP() error {
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	qmpCh := make(chan struct{})
 
 	// FIXME: are there more than one qmp sockets allowed?
 	numQMP := len(v.qcli.QMPSockets)
@@ -228,22 +230,31 @@ func (v *VM) StartQMP() error {
 		}
 
 		qmpSocketFile := v.qcli.QMPSockets[0].Name
-		log.Infof("VM:%s connecting to QMP socket %s", v.Name(), qmpSocketFile)
-		q, qver, err := qcli.QMPStart(v.Ctx, qmpSocketFile, qmpCfg, qmpCh)
-		if err != nil {
-			errCh <- fmt.Errorf("Failed to connect to qmp socket: %s", err.Error())
-			return
-		}
-		log.Infof("VM:%s QMP:%v QMPVersion:%v", v.Name(), q, qver)
+		attempt := 0
+		for {
+			qmpCh := make(chan struct{})
+			attempt = attempt + 1
+			log.Infof("VM:%s connecting to QMP socket %s attempt %d", v.Name(), qmpSocketFile, attempt)
+			q, qver, err := qcli.QMPStart(v.Ctx, qmpSocketFile, qmpCfg, qmpCh)
+			if err != nil {
+				errCh <- fmt.Errorf("Failed to connect to qmp socket: %s, retrying...", err.Error())
+				time.Sleep(time.Second * 1)
+				continue
+			}
+			log.Infof("VM:%s QMP:%v QMPVersion:%v", v.Name(), q, qver)
 
-		// This has to be the first command executed in a QMP session.
-		err = q.ExecuteQMPCapabilities(v.Ctx)
-		if err != nil {
-			errCh <- err
-			return
+			// This has to be the first command executed in a QMP session.
+			err = q.ExecuteQMPCapabilities(v.Ctx)
+			if err != nil {
+				errCh <- err
+				time.Sleep(time.Second * 1)
+				continue
+			}
+			log.Infof("VM:%s QMP ready", v.Name())
+			v.qmp = q
+			v.qmpCh = qmpCh
+			break
 		}
-
-		v.qmp = q
 		errCh <- nil
 	}()
 
@@ -285,22 +296,47 @@ func (v *VM) BackgroundRun() error {
 	return nil
 }
 
+func (v *VM) Status() error {
+	if v.qmp != nil {
+		vmName := v.Name()
+		log.Infof("VM:%s querying CPUInfo via QMP...", vmName)
+		cpuInfo, err := v.qmp.ExecQueryCpus(context.TODO())
+		if err != nil {
+			return err
+		}
+		log.Infof("VM:%s has %d CPUs", vmName, len(cpuInfo))
+
+		log.Infof("VM:%s querying VM Status via QMP...", vmName)
+		status, err := v.qmp.ExecuteQueryStatus(context.TODO())
+		if err != nil {
+			return err
+		}
+		log.Infof("VM:%s Status:%s Running:%v", vmName, status.Status, status.Running)
+	} else {
+		log.Infof("VM:%s qmp socket is not ready yet", v.Name())
+	}
+	return nil
+}
+
 func (v *VM) Start() error {
 	log.Infof("VM:%s starting...", v.Name())
 	err := v.BackgroundRun()
 	if err != nil {
 		log.Errorf("VM:%s failed to start VM:%s %s", v.Name(), err)
-		v.Stop()
+		v.Stop(true)
 		return err
 	}
+	v.Status()
 	v.State = VMStarted
 	return nil
 }
 
-func (v *VM) Stop() error {
+func (v *VM) Stop(force bool) error {
 	pid := v.Cmd.Process.Pid
 	status := v.Cmd.ProcessState.String()
-	log.Infof("VM:%s PID:%d Status:%s stopping...\n", v.Name(), pid, status)
+	log.Infof("VM:%s PID:%d Status:%s Force:%v stopping...\n", v.Name(), pid, status, force)
+
+	v.Status()
 
 	if v.qmp != nil {
 		log.Infof("VM:%s PID:%d qmp is not nill, sending qmp command", v.Name(), pid)
@@ -308,17 +344,30 @@ func (v *VM) Stop() error {
 		// Try shutdown via QMP, wait up to 10 seconds before force shutting down
 		timeout := time.Second * 10
 
-		// Let's try to shutdown the VM.  If it hasn't shutdown in 10 seconds we'll
-		// send a quit message.
-		log.Infof("VM:%s trying graceful shutdown via system_powerdown (%s timeout before cancelling)..", v.Name(), timeout.String())
-		err := v.qmp.ExecuteSystemPowerdown(v.Ctx)
-		if err != nil {
-			log.Errorf("VM:%s error:%s", v.Name(), err.Error())
+		if force {
+			// Let's force quit
+			// send a quit message.
+			log.Infof("VM:%s forcefully stopping vm via quit (%s timeout before cancelling)..", v.Name(), timeout.String())
+			err := v.qmp.ExecuteQuit(v.Ctx)
+			if err != nil {
+				log.Errorf("VM:%s error:%s", v.Name(), err.Error())
+			}
+		} else {
+			// Let's try to shutdown the VM.  If it hasn't shutdown in 10 seconds we'll
+			// send a poweroff message.
+			log.Infof("VM:%s trying graceful shutdown via system_powerdown (%s timeout before cancelling)..", v.Name(), timeout.String())
+			err := v.qmp.ExecuteSystemPowerdown(v.Ctx)
+			if err != nil {
+				log.Errorf("VM:%s error:%s", v.Name(), err.Error())
+			}
 		}
 
+		log.Infof("waiting on Ctx.Done() or time.After(timeout)")
 		select {
+		case <-v.qmpCh:
+			log.Infof("VM:%s qmpCh.exited: has exited without cancel", v.Name())
 		case <-v.Ctx.Done():
-			log.Infof("VM:%s has exited without cancel", v.Name())
+			log.Infof("VM:%s Ctx.Done(): has exited without cancel", v.Name())
 		case <-time.After(timeout):
 			log.Warnf("VM:%s timed out, killing via cancel context...", v.Name())
 			v.Cancel()
@@ -345,7 +394,7 @@ func (v *VM) IsRunning() bool {
 func (v *VM) Delete() error {
 	log.Infof("VM:%s deleting self...", v.Name())
 	if v.IsRunning() {
-		err := v.Stop()
+		err := v.Stop(true)
 		if err != nil {
 			return fmt.Errorf("Failed to delete VM:%s :%s", v.Name(), err)
 		}

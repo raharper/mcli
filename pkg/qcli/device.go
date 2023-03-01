@@ -86,6 +86,9 @@ const (
 	// Virtio9P is the 9pfs device driver.
 	Virtio9P DeviceDriver = "virtio-9p"
 
+	// VirtioScsi is the scsi controller over virtio driver
+	VirtioScsi DeviceDriver = "virtio-scsi-pci"
+
 	// VirtioSerial is the serial device driver.
 	VirtioSerial DeviceDriver = "virtio-serial"
 
@@ -145,6 +148,12 @@ const (
 
 	// PFlash
 	PFlash DeviceDriver = "pflash"
+
+	// USB-XHCI-Controller
+	USBXHCIController DeviceDriver = "qemu-xhci"
+
+	// AHCI ICH9 Controller
+	ICH9AHCIController DeviceDriver = "ich9-ahci"
 )
 
 func (config *Config) appendDevices() error {
@@ -192,6 +201,10 @@ func (config *Config) appendDevices() error {
 			}
 		case "UEFIFirmwareDevices":
 			for _, d := range config.UEFIFirmwareDevices {
+				config.devices = append(config.devices, d)
+			}
+		case "SCSIControllerDevices":
+			for _, d := range config.SCSIControllerDevices {
 				config.devices = append(config.devices, d)
 			}
 		}

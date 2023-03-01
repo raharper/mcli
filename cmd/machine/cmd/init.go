@@ -31,87 +31,81 @@ import (
 
 // initCmd represents the init command
 var initCmd = &cobra.Command{
-	Use:   "init <cluster name>",
-	Short: "Initialize a new machine cluster from yaml",
-	Long: `Initilize a new machine cluster by specifying a machine cluster
-yaml configuring one or more machines, networks and connections.`,
-	Run: doInit,
+	Use:   "init <machine name>",
+	Short: "Initialize a new machine from yaml",
+	Long:  `Initilize a new machine by specifying a machine yaml configuring.`,
+	Run:   doInit,
 }
 
 func doInit(cmd *cobra.Command, args []string) {
 	fileName := cmd.Flag("file").Value.String()
 	// Hi cobra, this is awkward...  why isn't there .Value.Bool()?
 	editFile, _ := cmd.Flags().GetBool("edit")
-	fmt.Println("init command:")
-	fmt.Println("  args: ", args)
-	fmt.Println("  file: ", fileName)
-	fmt.Println("  edit: ", editFile)
-
-	var clusterName string
+	var machineName string
 	if len(args) > 0 {
-		clusterName = args[0]
+		machineName = args[0]
 	} else {
-		clusterName = petname.Generate(petNameWords, petNameSep)
+		machineName = petname.Generate(petNameWords, petNameSep)
 	}
-	fmt.Println("  clusterName:", clusterName)
+	fmt.Println("  machineName:", machineName)
 
-	if err := DoCreateCluster(clusterName, fileName, editFile); err != nil {
-		panic("Failed to create a cluster")
+	if err := DoCreateMachine(machineName, fileName, editFile); err != nil {
+		panic("Failed to create a machine")
 	}
 }
 
-func DoCreateCluster(clusterName, fileName string, editFile bool) error {
+func DoCreateMachine(machineName, fileName string, editFile bool) error {
 	var err error
-	var clusterBytes []byte
+	var machineBytes []byte
 	onTerm := termios.IsTerminal(unix.Stdin)
-	newCluster := api.Cluster{
-		Name:      clusterName,
+	newMachine := api.Machine{
+		Name:      machineName,
 		Ephemeral: true,
-		Status:    api.ClusterStatusStopped,
+		Status:    api.MachineStatusStopped,
 	}
-	fmt.Printf("Creating cluster %s ...\n", clusterName)
+	fmt.Printf("Creating machine %s ...\n", machineName)
 
 	// check if edit is set whether we're a terminal or not
 	// if file, read contents, else read from stdin
 	// launch editor with contents
-	// post-edit attempt to marshal contents into Cluster definition, retry on failure
-	// If cluster.Persistent is set, then write contents to config dir, else call api.AddCluster()
+	// post-edit attempt to marshal contents into Machine definition, retry on failure
+	// If machine.Persistent is set, then write contents to config dir, else call api.AddMachine()
 
 	if editFile && !onTerm {
 		return fmt.Errorf("Aborting edit since stdin is not a terminal")
 	}
 
 	if fileName == "-" {
-		clusterBytes, err = ioutil.ReadAll(os.Stdin)
+		machineBytes, err = ioutil.ReadAll(os.Stdin)
 		if err != nil {
-			return fmt.Errorf("Error reading cluster definition from stdin: %s", err)
+			return fmt.Errorf("Error reading machine definition from stdin: %s", err)
 		}
 	} else {
 		if len(fileName) > 0 {
-			clusterBytes, err = os.ReadFile(fileName)
+			machineBytes, err = os.ReadFile(fileName)
 			if err != nil {
 				return fmt.Errorf("Error reading definition from %s: %s", fileName, err)
 			}
 		} else {
 			fmt.Println("No file specified, using defaults..\n")
-			clusterBytes, err = yaml.Marshal(newCluster)
+			machineBytes, err = yaml.Marshal(newMachine)
 			if err != nil {
-				return fmt.Errorf("Failed reading empty cluster config: %s", err)
+				return fmt.Errorf("Failed reading empty machine config: %s", err)
 			}
 			editFile = true
 		}
 	}
 
 	if editFile {
-		clusterBytes, err = shared.TextEditor("", clusterBytes)
+		machineBytes, err = shared.TextEditor("", machineBytes)
 		if err != nil {
 			return fmt.Errorf("Error calling editor: %s", err)
 		}
 	}
-	fmt.Printf("Got config:\n%s", string(clusterBytes))
+	fmt.Printf("Got config:\n%s", string(machineBytes))
 
 	for {
-		if err = yaml.Unmarshal(clusterBytes, &newCluster); err == nil {
+		if err = yaml.Unmarshal(machineBytes, &newMachine); err == nil {
 			break
 		}
 		if !onTerm {
@@ -123,16 +117,16 @@ func DoCreateCluster(clusterName, fileName string, editFile bool) error {
 		if err != nil {
 			return fmt.Errorf("Error reading reply: %s", err)
 		}
-		clusterBytes, err = shared.TextEditor("", clusterBytes)
+		machineBytes, err = shared.TextEditor("", machineBytes)
 		if err != nil {
 			fmt.Errorf("Error calling editor: %s", err)
 		}
 	}
 	// persist config if not ephemeral
 
-	err = postCluster(newCluster)
+	err = postMachine(newMachine)
 	if err != nil {
-		return fmt.Errorf("Error while POST'ing new cluster config: %s", err)
+		return fmt.Errorf("Error while POST'ing new machine config: %s", err)
 	}
 	return nil
 }

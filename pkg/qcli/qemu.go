@@ -234,15 +234,16 @@ type Config struct {
 	// Devices is a list of devices for qemu to create and drive.
 	devices []Device
 
-	RngDevices          []RngDevice          `yaml:"rng-devices"`
-	BlkDevices          []BlockDevice        `yaml:"blk-devices"`
-	NetDevices          []NetDevice          `yaml:"net-devices"`
-	CharDevices         []CharDevice         `yaml:"char-devices"`
-	LegacySerialDevices []LegacySerialDevice `yaml:"legacy-serial-devices"`
-	SerialDevices       []SerialDevice       `yaml:"serial-devices"`
-	MonitorDevices      []MonitorDevice      `yaml:"monitor-devices"`
-	PCIeRootPortDevices []PCIeRootPortDevice `yaml:"pcie-root-port-devices"`
-	UEFIFirmwareDevices []UEFIFirmwareDevice `yaml:"uefi-firmware-devices"`
+	RngDevices            []RngDevice            `yaml:"rng-devices"`
+	BlkDevices            []BlockDevice          `yaml:"blk-devices"`
+	NetDevices            []NetDevice            `yaml:"net-devices"`
+	CharDevices           []CharDevice           `yaml:"char-devices"`
+	LegacySerialDevices   []LegacySerialDevice   `yaml:"legacy-serial-devices"`
+	SerialDevices         []SerialDevice         `yaml:"serial-devices"`
+	MonitorDevices        []MonitorDevice        `yaml:"monitor-devices"`
+	PCIeRootPortDevices   []PCIeRootPortDevice   `yaml:"pcie-root-port-devices"`
+	UEFIFirmwareDevices   []UEFIFirmwareDevice   `yaml:"uefi-firmware-devices"`
+	SCSIControllerDevices []SCSIControllerDevice `yaml:"scsi-controller-devices"`
 
 	// RTC is the qemu Real Time Clock configuration
 	RTC RTC `yaml:"real-time-clock"`

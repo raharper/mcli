@@ -26,7 +26,7 @@ func GetKvmPath() (string, error) {
 	return "", fmt.Errorf("Failed to find QEMU/KVM binary [%s] in paths [%s]\n", emulators, paths)
 }
 
-func NewDefaultConfig(name string, numCpus, numMemMB uint32) (*qcli.Config, error) {
+func NewDefaultConfig(name string, numCpus, numMemMB uint32, uefiVarsPath string) (*qcli.Config, error) {
 	smp := qcli.SMP{CPUs: numCpus}
 	if numCpus < 1 {
 		smp.CPUs = 4
@@ -43,6 +43,13 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32) (*qcli.Config, erro
 	if err != nil {
 		return &qcli.Config{}, fmt.Errorf("Failed creating new default config: %s", err)
 	}
+
+	// FIXME: secureboot boolean
+	uefiDev, err := qcli.NewSystemUEFIFirmwareDevice(false)
+	if err != nil {
+		return &qcli.Config{}, fmt.Errorf("failed to create a UEFI Firmware Device: %s", err)
+	}
+	log.Infof("New UEFI Firmware Device: %+v", uefiDev)
 
 	c := &qcli.Config{
 		Name: name,
@@ -72,10 +79,31 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32) (*qcli.Config, erro
 				NoWait: true,
 			},
 		},
+		PCIeRootPortDevices: []qcli.PCIeRootPortDevice{
+			qcli.PCIeRootPortDevice{
+				ID:            "root-port.0x4.0",
+				Bus:           "pcie.0",
+				Chassis:       "0x0",
+				Slot:          "0x00",
+				Port:          "0x0",
+				Addr:          "0x5",
+				Multifunction: true,
+			},
+			qcli.PCIeRootPortDevice{
+				ID:            "root-port.0x4.1",
+				Bus:           "pcie.0",
+				Chassis:       "0x1",
+				Slot:          "0x00",
+				Port:          "0x1",
+				Addr:          "0x5.0x1",
+				Multifunction: false,
+			},
+		},
 		GlobalParams: []string{
 			"ICH9-LPC.disable_s3=1",
 			"driver=cfi.pflash01,property=secure,value=on",
 		},
+		UEFIFirmwareDevices: []qcli.UEFIFirmwareDevice{*uefiDev},
 	}
 
 	return c, nil
@@ -151,6 +179,7 @@ func (qd *QemuDisk) QBlockDevice(qti *qcli.QemuTypeIndex) (qcli.BlockDevice, err
 		blk.Driver = qcli.NVME
 	case "virtio":
 		blk.Driver = qcli.VirtioBlock
+		blk.Bus = "pcie.0"
 	case "ide":
 		if qd.Type == "cdrom" {
 			blk.Driver = qcli.IDECDROM
@@ -189,7 +218,7 @@ func (nd NicDef) QNetDevice(qti *qcli.QemuTypeIndex) (qcli.NetDevice, error) {
 }
 
 func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
-	c, err := NewDefaultConfig(v.Name, v.Cpus, v.Memory)
+	c, err := NewDefaultConfig(v.Name, v.Cpus, v.Memory, v.UEFIVars)
 	if err != nil {
 		return c, err
 	}
@@ -200,6 +229,18 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 			return c, fmt.Errorf("Error creating VM run dir '%s': %s", runDir, err)
 		}
 	}
+
+	// copy the source UefiVars to runDir and update config
+	targetUEFIVars := filepath.Join(runDir, qcli.UEFIVarsFileName)
+	srcUEFIVars := c.UEFIFirmwareDevices[0].Vars
+	if PathExists(v.UEFIVars) {
+		srcUEFIVars = v.UEFIVars
+	}
+	log.Infof("copying %q -> %q", srcUEFIVars, targetUEFIVars)
+	if err := CopyFileBits(srcUEFIVars, targetUEFIVars); err != nil {
+		return c, fmt.Errorf("Failed to copy UEFIVars from '%s' to '%q': %s", srcUEFIVars, targetUEFIVars, err)
+	}
+	c.UEFIFirmwareDevices[0].Vars = targetUEFIVars
 
 	qmpSocketName := filepath.Join(runDir, "qmp.sock")
 	c.QMPSockets[0].Name = qmpSocketName
@@ -218,6 +259,7 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 
 	v.AdjustBootIndicies(qti)
 
+	busses := make(map[string]bool)
 	for i := range v.Disks {
 		var disk *QemuDisk
 		disk = &v.Disks[i]
@@ -236,6 +278,18 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 			return c, err
 		}
 		c.BlkDevices = append(c.BlkDevices, qblk)
+
+		_, ok := busses[disk.Attach]
+		// we only one controller
+		if !ok {
+			if disk.Attach == "scsi" {
+				scsiCon := qcli.SCSIControllerDevice{
+					ID:       fmt.Sprintf("scsi%d", qti.Next("scsi")),
+					IOThread: fmt.Sprintf("iothread%d", qti.Next("iothread")),
+				}
+				c.SCSIControllerDevices = append(c.SCSIControllerDevices, scsiCon)
+			}
+		}
 	}
 
 	for _, nic := range v.Nics {

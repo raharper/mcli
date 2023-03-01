@@ -26,20 +26,20 @@ import (
 // listCmd represents the list command
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "list all of the defined clusters",
-	Long:  `list all of the defined clusters`,
+	Short: "list all of the defined machines",
+	Long:  `list all of the defined machines`,
 	Run:   doList,
 }
 
 func doList(cmd *cobra.Command, args []string) {
-	clusters, err := getClusters()
+	machines, err := getMachines()
 	if err != nil {
 		panic(err)
 	}
 	tbl := table.New("Name", "Status", "Description")
 	tbl.AddRow("----", "------", "-----------")
-	for _, cluster := range clusters {
-		tbl.AddRow(cluster.Name, cluster.Status, cluster.Description)
+	for _, machine := range machines {
+		tbl.AddRow(machine.Name, machine.Status, machine.Description)
 	}
 	tbl.Print()
 }

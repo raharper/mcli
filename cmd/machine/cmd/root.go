@@ -42,7 +42,7 @@ const (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "machine",
-	Short: "The machine client is used to run and manage machine clusters",
+	Short: "The machine client is used to run and manage machine machines",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -116,42 +116,42 @@ func initConfig() {
 }
 
 // common for all commands
-func getClusters() ([]api.Cluster, error) {
-	clusters := []api.Cluster{}
-	listURL := api.GetAPIURL("clusters")
+func getMachines() ([]api.Machine, error) {
+	machines := []api.Machine{}
+	listURL := api.GetAPIURL("machines")
 	if len(listURL) == 0 {
-		return clusters, fmt.Errorf("Failed to get API URL for 'clusters' endpoint")
+		return machines, fmt.Errorf("Failed to get API URL for 'machines' endpoint")
 	}
 	resp, _ := rootclient.R().EnableTrace().Get(listURL)
-	err := json.Unmarshal(resp.Body(), &clusters)
+	err := json.Unmarshal(resp.Body(), &machines)
 	if err != nil {
-		return clusters, fmt.Errorf("Failed to unmarshal GET on /clusters")
+		return machines, fmt.Errorf("Failed to unmarshal GET on /machines")
 	}
-	return clusters, nil
+	return machines, nil
 }
 
-func postCluster(newCluster api.Cluster) error {
-	postURL := api.GetAPIURL("clusters")
+func postMachine(newMachine api.Machine) error {
+	postURL := api.GetAPIURL("machines")
 	if len(postURL) == 0 {
-		return fmt.Errorf("Failed to get API URL for 'clusters' endpoint")
+		return fmt.Errorf("Failed to get API URL for 'machines' endpoint")
 	}
-	resp, err := rootclient.R().EnableTrace().SetBody(newCluster).Post(postURL)
+	resp, err := rootclient.R().EnableTrace().SetBody(newMachine).Post(postURL)
 	if err != nil {
-		return fmt.Errorf("Failed POST to 'clusters' endpoint: %s", err)
+		return fmt.Errorf("Failed POST to 'machines' endpoint: %s", err)
 	}
 	fmt.Printf("%s %s\n", resp, resp.Status())
 	return nil
 }
 
-func putCluster(newCluster api.Cluster) error {
-	endpoint := fmt.Sprintf("clusters/%s", newCluster.Name)
+func putMachine(newMachine api.Machine) error {
+	endpoint := fmt.Sprintf("machines/%s", newMachine.Name)
 	putURL := api.GetAPIURL(endpoint)
 	if len(putURL) == 0 {
-		return fmt.Errorf("Failed to get API PUT URL for 'clusters' endpoint")
+		return fmt.Errorf("Failed to get API PUT URL for 'machines' endpoint")
 	}
-	resp, err := rootclient.R().EnableTrace().SetBody(newCluster).Put(putURL)
+	resp, err := rootclient.R().EnableTrace().SetBody(newMachine).Put(putURL)
 	if err != nil {
-		return fmt.Errorf("Failed PUT to cluster '%s' endpoint: %s", newCluster.Name, err)
+		return fmt.Errorf("Failed PUT to machine '%s' endpoint: %s", newMachine.Name, err)
 	}
 	fmt.Printf("%s %s\n", resp, resp.Status())
 	return nil

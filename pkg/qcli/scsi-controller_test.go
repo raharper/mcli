@@ -8,7 +8,7 @@ var (
 )
 
 func TestAppendDeviceSCSIController(t *testing.T) {
-	scsiCon := SCSIController{
+	scsiCon := SCSIControllerDevice{
 		ID:      "foo",
 		ROMFile: romfile,
 	}

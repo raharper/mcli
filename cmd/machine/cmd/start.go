@@ -24,46 +24,46 @@ import (
 
 // startCmd represents the start command
 var startCmd = &cobra.Command{
-	Use:        "start <cluster_name>",
+	Use:        "start <machine_name>",
 	Args:       cobra.MinimumNArgs(1),
-	ArgAliases: []string{"clusterName"},
-	Short:      "start the specified cluster",
-	Long:       `start the specified cluster if it exists`,
+	ArgAliases: []string{"machineName"},
+	Short:      "start the specified machine",
+	Long:       `start the specified machine if it exists`,
 	Run:        doStart,
 }
 
 // Ideally:
-// 	starting a cluster requires POST'ing an update to the cluster state
+// 	starting a machine requires POST'ing an update to the machine state
 // 	which toggles from the 'stopped' state to the 'running' state.
-// 	Asynchronously the cluster will start, in a separate goroutine spawned by
+// 	Asynchronously the machine will start, in a separate goroutine spawned by
 // 	machined, and depending on client flags (blocking/non-blocking) the server
-// 	will return back an new URL for status on the cluster instance
+// 	will return back an new URL for status on the machine instance
 //
-// TBD, the affecting the machines in each cluster
+// TBD, the affecting the machines in each machine
 //
-// Currently we now post a request with {'status': 'running'} to start a cluster
+// Currently we now post a request with {'status': 'running'} to start a machine
 
 func doStart(cmd *cobra.Command, args []string) {
-	clusterName := args[0]
-	if err := DoStartCluster(clusterName); err != nil {
-		panic(fmt.Sprintf("Failed to start clusters '%s': %s", clusterName))
+	machineName := args[0]
+	if err := DoStartMachine(machineName); err != nil {
+		panic(fmt.Sprintf("Failed to start machines '%s': %s", machineName))
 	}
 }
 
-func DoStartCluster(clusterName string) error {
-	fmt.Printf("Starting cluster %s\n", clusterName)
+func DoStartMachine(machineName string) error {
+	fmt.Printf("Starting machine %s\n", machineName)
 	var request struct {
 		Status string `json:"status"`
 	}
 	request.Status = "running"
-	endpoint := fmt.Sprintf("clusters/%s/start", clusterName)
+	endpoint := fmt.Sprintf("machines/%s/start", machineName)
 	startURL := api.GetAPIURL(endpoint)
 	if len(startURL) == 0 {
-		return fmt.Errorf("Failed to get API URL for 'clusters/%s/start' endpoint", clusterName)
+		return fmt.Errorf("Failed to get API URL for 'machines/%s/start' endpoint", machineName)
 	}
 	resp, err := rootclient.R().EnableTrace().SetBody(request).Post(startURL)
 	if err != nil {
-		return fmt.Errorf("Failed POST to 'clusters/%s/start' endpoint: %s", clusterName, err)
+		return fmt.Errorf("Failed POST to 'machines/%s/start' endpoint: %s", machineName, err)
 	}
 	fmt.Printf("%s %s\n", resp, resp.Status())
 	return nil

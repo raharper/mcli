@@ -23,10 +23,9 @@ import (
 
 type NetworkDef struct {
 	Name    string `yaml:"name"`
-	Address string `yaml:"address"`
+	Address string `yaml:"address",omitempty`
 	Type    string `yaml:"type"`
-	Nat     bool   `yaml:"nat"`
-	IFName  string
+	IFName  string `yaml:"interface",omitempty`
 }
 
 type NicDef struct {
@@ -35,7 +34,7 @@ type NicDef struct {
 	ID        string     `yaml:"id",omitempty`
 	Mac       string     `yaml:"mac",omitempty`
 	ifname    string     `yaml:"ifname",omitempty`
-	network   string     `yaml:"network",omitempty`
+	Network   string     `yaml:"network",omitempty`
 	Ports     []PortRule `yaml:"ports",omitempty`
 	BootIndex *int       `yaml:"bootindex,omitempty`
 }

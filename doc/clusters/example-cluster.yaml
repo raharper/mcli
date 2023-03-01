@@ -1,0 +1,37 @@
+name: test-cluster1
+type: clustertype
+description: This is an example cluster
+ephemeral: false
+config:
+    networks:
+    - name: net1
+      type: user
+
+    connections:
+        vm1:
+            nic1: net1
+        vm2:
+            nic1: net1
+
+    machines:
+        - name: vm1
+          cdrom: ubuntu.iso
+          secure-boot: true
+          tpm: true
+          tpm-version: 2
+          disks:
+              - file: home/vm1-disk.qcow2
+                type: ssd
+          nics:
+              - id: nic1
+
+        - name: vm2
+          cdrom: ubuntu.iso
+          secure-boot: true
+          tpm: true
+          tpm-version: 2
+          disks:
+              - file: home/vm2-disk.qcow2
+                type: ssd
+          nics:
+              - id: nic1
