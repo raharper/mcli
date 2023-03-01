@@ -48,7 +48,7 @@ func (bus *PCIBus) SetSlot(slot int) error {
 		return fmt.Errorf("Slot %d must be < %d", slot, PCISlotMax)
 	}
 	bus[slot] = true
-	log.Info("PCIBus: allocated slot %s", fmt.Sprintf("0x%02x", slot))
+	log.Infof("PCIBus: allocated slot %s", fmt.Sprintf("0x%02x", slot))
 	return nil
 }
 
