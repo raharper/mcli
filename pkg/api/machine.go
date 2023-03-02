@@ -69,6 +69,15 @@ func (ctl *MachineController) GetMachines() []Machine {
 	return ctl.Machines
 }
 
+func (ctl *MachineController) GetMachine(machineName string) (Machine, error) {
+	for _, machine := range ctl.Machines {
+		if machine.Name == machineName {
+			return machine, nil
+		}
+	}
+	return Machine{}, fmt.Errorf("Failed to find machine with Name: %s", machineName)
+}
+
 func (ctl *MachineController) AddMachine(newMachine Machine, cfg *MachineDaemonConfig) error {
 	if _, err := ctl.GetMachineByName(newMachine.Name); err == nil {
 		return fmt.Errorf("Machine '%s' is already defined", newMachine.Name)

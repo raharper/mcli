@@ -38,6 +38,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.GET("/machines", rh.GetMachines)
 	rh.c.Router.POST("/machines", rh.PostMachine)
 	rh.c.Router.PUT("/machines/:machinename", rh.UpdateMachine)
+	rh.c.Router.GET("/machines/:machinename", rh.GetMachine)
 	rh.c.Router.DELETE("/machines/:machinename", rh.DeleteMachine)
 	rh.c.Router.POST("/machines/:machinename/start", rh.StartMachine)
 	rh.c.Router.POST("/machines/:machinename/stop", rh.StopMachine)
@@ -45,6 +46,15 @@ func (rh *RouteHandler) SetupRoutes() {
 
 func (rh *RouteHandler) GetMachines(ctx *gin.Context) {
 	ctx.IndentedJSON(http.StatusOK, rh.c.MachineController.GetMachines())
+}
+
+func (rh *RouteHandler) GetMachine(ctx *gin.Context) {
+	machineName := ctx.Param("machinename")
+	machine, err := rh.c.MachineController.GetMachine(machineName)
+	if err != nil {
+		log.Errorf("Failed to get machine '%s': %s\n", machineName, err)
+	}
+	ctx.IndentedJSON(http.StatusOK, machine)
 }
 
 func (rh *RouteHandler) PostMachine(ctx *gin.Context) {

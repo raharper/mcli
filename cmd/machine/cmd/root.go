@@ -24,6 +24,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -128,6 +129,20 @@ func getMachines() ([]api.Machine, error) {
 		return machines, fmt.Errorf("Failed to unmarshal GET on /machines")
 	}
 	return machines, nil
+}
+
+func getMachine(machineName string) (api.Machine, error) {
+	machine := api.Machine{}
+	getURL := api.GetAPIURL(filepath.Join("machines", machineName))
+	if len(getURL) == 0 {
+		return machine, fmt.Errorf("Failed to get API URL for 'machines/%s' endpoint", machineName)
+	}
+	resp, _ := rootclient.R().EnableTrace().Get(getURL)
+	err := json.Unmarshal(resp.Body(), &machine)
+	if err != nil {
+		return machine, fmt.Errorf("Failed to unmarshal GET on /machines/%s", machineName)
+	}
+	return machine, nil
 }
 
 func postMachine(newMachine api.Machine) error {

@@ -21,31 +21,43 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const SerialConsole = "console"
+const VGAConsole = "vga"
+
 // consoleCmd represents the console command
 var consoleCmd = &cobra.Command{
 	Use:   "console",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("console called")
-	},
+	Short: "Connect to machine console (serial or graphical)",
+	Long:  `Connect to machine text console (serial) or graphical`,
+	Run:   doConsole,
 }
 
 func init() {
 	rootCmd.AddCommand(consoleCmd)
+	consoleCmd.PersistentFlags().StringP(
+		"type",
+		"t", "",
+		`type of connectiotn to establish: 'console' for serial console, 'vga' for SPICE graphical output (default \"console\")"`,
+	)
+}
 
-	// Here you will define your flags and configuration settings.
+func doConsole(cmd *cobra.Command, args []string) {
+	consoleType := cmd.Flag("type").Value.String()
+	if consoleType == "" {
+		consoleType = SerialConsole
+	}
+	if consoleType != SerialConsole || consoleType != VGAConsole {
+		panic(fmt.Sprintf("Invalid console type '%s'", consoleType))
+	}
+	var machineName string
+	if len(args) < 1 {
+		panic("Missing required machine name")
+	}
+	machineName = args[0]
+	DoConsoleAttach(machineName, consoleType)
+}
 
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// consoleCmd.PersistentFlags().String("foo", "", "A help for foo")
+func DoConsoleAttach(machineName, consoleType string) error {
 
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// consoleCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	return nil
 }
