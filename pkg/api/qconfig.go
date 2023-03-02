@@ -119,6 +119,7 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32, runDir string) (*qc
 		},
 		VGA: "qxl",
 		SpiceDevice: qcli.SpiceDevice{
+			HostAddress:      "127.0.0.1",
 			Port:             fmt.Sprintf("%d", NextFreePort(qcli.RemoteDisplayPortBase)),
 			DisableTicketing: true,
 		},

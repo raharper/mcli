@@ -37,11 +37,12 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.GET("/machines", rh.GetMachines)
 	rh.c.Router.POST("/machines", rh.PostMachine)
-	rh.c.Router.PUT("/machines/:machinename", rh.UpdateMachine)
 	rh.c.Router.GET("/machines/:machinename", rh.GetMachine)
+	rh.c.Router.PUT("/machines/:machinename", rh.UpdateMachine)
 	rh.c.Router.DELETE("/machines/:machinename", rh.DeleteMachine)
 	rh.c.Router.POST("/machines/:machinename/start", rh.StartMachine)
 	rh.c.Router.POST("/machines/:machinename/stop", rh.StopMachine)
+	rh.c.Router.POST("/machines/:machinename/console", rh.GetMachineConsole)
 }
 
 func (rh *RouteHandler) GetMachines(ctx *gin.Context) {
@@ -126,6 +127,36 @@ func (rh *RouteHandler) StopMachine(ctx *gin.Context) {
 		}
 	} else {
 		err := fmt.Errorf("Invalid Stop request: '%v;", request)
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+}
+
+type MachineConsoleRequest struct {
+	ConsoleType string `json:"type"`
+}
+
+func (rh *RouteHandler) GetMachineConsole(ctx *gin.Context) {
+	machineName := ctx.Param("machinename")
+	var request MachineConsoleRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if request.ConsoleType == SerialConsole {
+		consoleInfo, err := rh.c.MachineController.GetMachineConsole(machineName, SerialConsole)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+		ctx.IndentedJSON(http.StatusOK, consoleInfo)
+	} else if request.ConsoleType == VGAConsole {
+		consoleInfo, err := rh.c.MachineController.GetMachineConsole(machineName, VGAConsole)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+		ctx.IndentedJSON(http.StatusOK, consoleInfo)
+	} else {
+		err := fmt.Errorf("Invalid console request: '%v;", request)
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

@@ -125,23 +125,55 @@ type VM struct {
 	wg     sync.WaitGroup
 }
 
-func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (VM, error) {
+func (v *VM) findCharDeviceByID(deviceID string) (qcli.CharDevice, error) {
+	for _, chardev := range v.qcli.CharDevices {
+		if chardev.ID == deviceID {
+			return chardev, nil
+		}
+	}
+	return qcli.CharDevice{}, fmt.Errorf("Failed to find a char device with id:%s", deviceID)
+}
+
+func (v *VM) MonitorSocket() (string, error) {
+	devID := "monitor0"
+	cdev, err := v.findCharDeviceByID(devID)
+	if err != nil {
+		return "", fmt.Errorf("Failed to find a monitor device with id=%s: %s", devID, err)
+	}
+	return cdev.Path, nil
+}
+
+func (v *VM) SerialSocket() (string, error) {
+	log.Infof("VM.SerialSocket")
+	devID := "serial0"
+	cdev, err := v.findCharDeviceByID(devID)
+	if err != nil {
+		return "", fmt.Errorf("Failed to find a serial device with id=%s: %s", devID, err)
+	}
+	return cdev.Path, nil
+}
+
+func (v *VM) SpiceDevice() (qcli.SpiceDevice, error) {
+	return v.qcli.SpiceDevice, nil
+}
+
+func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (*VM, error) {
 	ctx, cancelFn := context.WithCancel(ctx)
 	runDir := filepath.Join(ctx.Value(clsCtxStateDir).(string), vmConfig.Name)
 
 	log.Infof("newVM: Generating qcli Config rundir=%s", runDir)
 	qcfg, err := GenerateQConfig(runDir, vmConfig)
 	if err != nil {
-		return VM{}, fmt.Errorf("Failed to generate qcli Config from VM definition: %s", err)
+		return &VM{}, fmt.Errorf("Failed to generate qcli Config from VM definition: %s", err)
 	}
 
 	cmdParams, err := qcli.ConfigureParams(qcfg, nil)
 	if err != nil {
-		return VM{}, fmt.Errorf("Failed to generate new VM command parameters: %s", err)
+		return &VM{}, fmt.Errorf("Failed to generate new VM command parameters: %s", err)
 	}
 	log.Infof("newVM: generated qcli config parameters: %s", cmdParams)
 
-	return VM{
+	return &VM{
 		Config: vmConfig,
 		Ctx:    ctx,
 		Cancel: cancelFn,

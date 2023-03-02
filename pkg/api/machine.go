@@ -32,6 +32,8 @@ const (
 	MachineStatusStarting string = "starting"
 	MachineStatusRunning  string = "running"
 	MachineStatusStopping string = "stopping"
+	SerialConsole         string = "console"
+	VGAConsole            string = "vga"
 )
 
 type StopChannel chan struct{}
@@ -170,6 +172,45 @@ func (ctl *MachineController) StopMachine(machineName string, force bool) error 
 	return fmt.Errorf("Failed to find machine '%s', cannot stop unknown machine", machineName)
 }
 
+type ConsoleInfo struct {
+	Type   string `json:"type"`
+	Path   string `json:"path"`
+	Addr   string `json:"addr"`
+	Port   string `json:"port"`
+	Secure bool   `json:"secure"`
+}
+
+func (ctl *MachineController) GetMachineConsole(machineName string, consoleType string) (ConsoleInfo, error) {
+	consoleInfo := ConsoleInfo{Type: consoleType}
+	for _, machine := range ctl.Machines {
+		if machine.Name == machineName {
+			if consoleType == SerialConsole {
+				path, err := machine.SerialSocket()
+				if err != nil {
+					return consoleInfo, fmt.Errorf("Failed to get serial socket info: %s", err)
+				}
+				consoleInfo.Path = path
+				return consoleInfo, nil
+			}
+			if consoleType == VGAConsole {
+				spiceInfo, err := machine.SpiceConnection()
+				if err != nil {
+					return consoleInfo, fmt.Errorf("Failed to get spice connection info: %s", err)
+				}
+				consoleInfo.Addr = spiceInfo.HostAddress
+				consoleInfo.Port = spiceInfo.Port
+				if spiceInfo.TLSPort != "" {
+					consoleInfo.Port = spiceInfo.TLSPort
+					consoleInfo.Secure = true
+				}
+				return consoleInfo, nil
+			}
+			return consoleInfo, fmt.Errorf("Unknown console type '%s'", consoleType)
+		}
+	}
+	return consoleInfo, fmt.Errorf("Failed to find machine '%s', cannot connect console to unknown machine", machineName)
+}
+
 //
 // Machine Functions Below
 //
@@ -250,7 +291,8 @@ func (cls *Machine) Start() error {
 		cls.Status = MachineStatusStopped
 		return fmt.Errorf("Failed to create new VM '%s': %s", cls.Name, err)
 	}
-	cls.instance = &vm
+	cls.instance = vm
+	log.Infof("machine.Start() vm=%v m.instance=%v calling vm.Start()", vm, cls.instance)
 
 	err = vm.Start()
 	if err != nil {
@@ -334,4 +376,32 @@ func (cls *Machine) IsRunning() bool {
 		log.Debugf("IsRunning called on Machine with nil instance")
 	}
 	return false
+}
+
+func (m *Machine) SerialSocket() (string, error) {
+	log.Infof("Machine %s querying serial socket path...", m.Name)
+	log.Infof("m.instance = %+v", m.instance)
+	return m.instance.SerialSocket()
+}
+
+type SpiceConnection struct {
+	HostAddress string
+	Port        string
+	TLSPort     string
+	// Password    string
+}
+
+func (m *Machine) SpiceConnection() (SpiceConnection, error) {
+	spiceCon := SpiceConnection{}
+
+	spiceDev, err := m.instance.SpiceDevice()
+	if err != nil {
+		return SpiceConnection{}, err
+	}
+	spiceCon.HostAddress = spiceDev.HostAddress
+	spiceCon.Port = spiceDev.Port
+	spiceCon.TLSPort = spiceDev.TLSPort
+	// spiceCon.Password = spiceDev.Password
+
+	return spiceCon, nil
 }

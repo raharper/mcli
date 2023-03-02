@@ -16,13 +16,15 @@ limitations under the License.
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"mcli-v2/pkg/api"
+	"os"
+	"os/exec"
 
+	"github.com/apex/log"
 	"github.com/spf13/cobra"
 )
-
-const SerialConsole = "console"
-const VGAConsole = "vga"
 
 // consoleCmd represents the console command
 var consoleCmd = &cobra.Command{
@@ -34,30 +36,99 @@ var consoleCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(consoleCmd)
-	consoleCmd.PersistentFlags().StringP(
-		"type",
-		"t", "",
-		`type of connectiotn to establish: 'console' for serial console, 'vga' for SPICE graphical output (default \"console\")"`,
-	)
+	consoleCmd.PersistentFlags().StringP("console-type", "t", "", "console or vga")
 }
 
+// POST /machines/:machine/console '{"ConsoleType": "console|vga"}'
+// RESP
+// {
+//  "Type": "console",
+//  "Path": "$HOME/.../:machine/serial.sock"
+// }
+// {
+//  "Type": "vga",
+//  "Addr": "127.0.0.1",
+//  "Port": "5901",
+//  "Secure": false,
+// }
 func doConsole(cmd *cobra.Command, args []string) {
-	consoleType := cmd.Flag("type").Value.String()
+	consoleType := cmd.Flag("console-type").Value.String()
 	if consoleType == "" {
-		consoleType = SerialConsole
+		consoleType = api.SerialConsole
 	}
-	if consoleType != SerialConsole || consoleType != VGAConsole {
+	if consoleType != api.SerialConsole && consoleType != api.VGAConsole {
 		panic(fmt.Sprintf("Invalid console type '%s'", consoleType))
 	}
-	var machineName string
 	if len(args) < 1 {
 		panic("Missing required machine name")
 	}
-	machineName = args[0]
-	DoConsoleAttach(machineName, consoleType)
+	machineName := args[0]
+
+	request := api.MachineConsoleRequest{ConsoleType: consoleType}
+	endpoint := fmt.Sprintf("machines/%s/console", machineName)
+	consoleURL := api.GetAPIURL(endpoint)
+	if len(consoleURL) == 0 {
+		panic(fmt.Sprintf("Failed to get API URL for 'machines/%s/console'", machineName))
+	}
+
+	resp, err := rootclient.R().EnableTrace().SetBody(request).Post(consoleURL)
+	if err != nil {
+		panic(fmt.Sprintf("Failed POST to %s: %s", endpoint, err))
+	}
+	fmt.Printf("%s %s\n", resp, resp.Status())
+
+	consoleInfo := api.ConsoleInfo{}
+	err = json.Unmarshal(resp.Body(), &consoleInfo)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to unmarshal response from %s: %s", endpoint, err))
+	}
+
+	err = DoConsoleAttach(machineName, consoleInfo)
+	if err != nil {
+		panic(err)
+	}
 }
 
-func DoConsoleAttach(machineName, consoleType string) error {
+func doConsoleAttach(machineName string, consoleInfo api.ConsoleInfo) error {
+	if consoleInfo.Path == "" {
+		return fmt.Errorf("Invalid ConsoleInfo, Path is empty")
+	}
+
+	// 0x1d => ]
+	args := []string{"stdin,echo=0,raw,escape=0x1d", fmt.Sprintf("unix-connect:%s", consoleInfo.Path)}
+	cmd := exec.Command("socat", args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	log.Infof("Running command: %s", cmd.Args)
+	fmt.Printf("Attaching to %s serial console, use 'Control-]' to detatch from console\n", machineName)
+	return cmd.Run()
+}
+
+func doVGAAttach(machineName string, consoleInfo api.ConsoleInfo) error {
+
+	args := []string{fmt.Sprintf("--host=%s", consoleInfo.Addr)}
+	if consoleInfo.Secure {
+		args = append(args, fmt.Sprintf("--secure-port=%s", consoleInfo.Port))
+	} else {
+		args = append(args, fmt.Sprintf("--port=%s", consoleInfo.Port))
+	}
+	args = append(args, fmt.Sprintf("--title='machine %s'", machineName))
+
+	cmd := exec.Command("spicy", args...)
+	fmt.Printf("Attaching to %s vga console\n", machineName)
+	return cmd.Run()
+}
+
+func DoConsoleAttach(machineName string, consoleInfo api.ConsoleInfo) error {
+	switch consoleInfo.Type {
+	case api.SerialConsole:
+		return doConsoleAttach(machineName, consoleInfo)
+	case api.VGAConsole:
+		return doVGAAttach(machineName, consoleInfo)
+	default:
+		return fmt.Errorf("Cannot attach to unknown console type '%s'", consoleInfo.Type)
+	}
 
 	return nil
 }
