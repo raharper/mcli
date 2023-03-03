@@ -10,7 +10,7 @@ config:
     tpm: true
     tpm-version: 2.0
     disks:
-        - file: images/barehost-lvm-uefi.qcow2
+        - file: import/barehost-lvm-uefi.qcow2
           format: qcow2
           type: ssd
           attach: virtio

@@ -26,7 +26,7 @@ func GetKvmPath() (string, error) {
 	return "", fmt.Errorf("Failed to find QEMU/KVM binary [%s] in paths [%s]\n", emulators, paths)
 }
 
-func NewDefaultConfig(name string, numCpus, numMemMB uint32, runDir string) (*qcli.Config, error) {
+func NewDefaultConfig(name string, numCpus, numMemMB uint32, sockDir string) (*qcli.Config, error) {
 	smp := qcli.SMP{CPUs: numCpus}
 	if numCpus < 1 {
 		smp.CPUs = 4
@@ -70,13 +70,13 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32, runDir string) (*qc
 				Driver:  qcli.LegacySerial,
 				Backend: qcli.Socket,
 				ID:      "serial0",
-				Path:    filepath.Join(runDir, "console.sock"),
+				Path:    filepath.Join(sockDir, "console.sock"),
 			},
 			qcli.CharDevice{
 				Driver:  qcli.LegacySerial,
 				Backend: qcli.Socket,
 				ID:      "monitor0",
-				Path:    filepath.Join(runDir, "monitor.sock"),
+				Path:    filepath.Join(sockDir, "monitor.sock"),
 			},
 		},
 		LegacySerialDevices: []qcli.LegacySerialDevice{
@@ -94,7 +94,7 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32, runDir string) (*qc
 				Type:   "unix",
 				Server: true,
 				NoWait: true,
-				Name:   filepath.Join(runDir, "qmp.sock"),
+				Name:   filepath.Join(sockDir, "qmp.sock"),
 			},
 		},
 		PCIeRootPortDevices: []qcli.PCIeRootPortDevice{
@@ -286,17 +286,10 @@ func ConfigureUEFIVars(c *qcli.Config, srcVars, runDir string, secureBoot bool) 
 	return nil
 }
 
-func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
-	c, err := NewDefaultConfig(v.Name, v.Cpus, v.Memory, runDir)
+func GenerateQConfig(runDir, sockDir string, v VMDef) (*qcli.Config, error) {
+	c, err := NewDefaultConfig(v.Name, v.Cpus, v.Memory, sockDir)
 	if err != nil {
 		return c, err
-	}
-
-	if !PathExists(runDir) {
-		err := EnsureDir(runDir)
-		if err != nil {
-			return c, fmt.Errorf("Error creating VM run dir '%s': %s", runDir, err)
-		}
 	}
 
 	err = ConfigureUEFIVars(c, v.UEFIVars, runDir, v.SecureBoot)

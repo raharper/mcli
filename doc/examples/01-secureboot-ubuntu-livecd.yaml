@@ -1,14 +1,15 @@
-name: vm1
+name: 01-secure-boot-livecd
 type: kvm
 ephemeral: false
-description: the minimal amount of config to define a machine
+description: A fresh VM booting Ubuntu LiveCD in SecureBoot mode with TPM
 config:
+  name: 01-secure-boot-livecd
   boot: cdrom
   uefi: true
   tpm: true
   tpm-version: 2.0
   secure-boot: true
-  cdrom: images/ubuntu-22.04.2-desktop-amd64.iso
+  cdrom: import/ubuntu-22.04.2-desktop-amd64.iso
   disks:
       - file: root-disk.qcow
         type: ssd

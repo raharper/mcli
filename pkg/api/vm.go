@@ -113,17 +113,23 @@ func (v *VMDef) AdjustBootIndicies(qti *qcli.QemuTypeIndex) error {
 
 // TODO: Rename fields
 type VM struct {
-	Ctx    context.Context
-	Cancel context.CancelFunc
-	Config VMDef
-	State  VMState
-	RunDir string
-	Cmd    *exec.Cmd
-	SwTPM  *SwTPM
-	qcli   *qcli.Config
-	qmp    *qcli.QMP
-	qmpCh  chan struct{}
-	wg     sync.WaitGroup
+	Ctx     context.Context
+	Cancel  context.CancelFunc
+	Config  VMDef
+	State   VMState
+	RunDir  string
+	sockDir string
+	Cmd     *exec.Cmd
+	SwTPM   *SwTPM
+	qcli    *qcli.Config
+	qmp     *qcli.QMP
+	qmpCh   chan struct{}
+	wg      sync.WaitGroup
+}
+
+// note VM.sockDir is the path to the real sockets and runDir/sockets is a symlink to the socket
+func (v *VM) SocketDir() string {
+	return filepath.Join(v.RunDir, "sockets")
 }
 
 func (v *VM) findCharDeviceByID(deviceID string) (qcli.CharDevice, error) {
@@ -166,8 +172,32 @@ func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (*VM, error)
 	ctx, cancelFn := context.WithCancel(ctx)
 	runDir := filepath.Join(ctx.Value(clsCtxStateDir).(string), vmConfig.Name)
 
+	if !PathExists(runDir) {
+		err := EnsureDir(runDir)
+		if err != nil {
+			return &VM{}, fmt.Errorf("Error creating VM run dir '%s': %s", runDir, err)
+		}
+	}
+
+	// UNIX sockets cannot have a long path so:
+	// 1. create a dir under /tmp to hold the real sockets, the VM will
+	//    reference this path
+	// 2. create a symlink, $runDir/sockets which points to the tmp dir
+	// 3. the VM will use the tmp path, and the Machine will return the statedir
+	// path to client
+	tmpSockDir, err := GetTempSocketDir()
+	if err != nil {
+		return &VM{}, fmt.Errorf("Failed to create temp socket dir: %s", err)
+	}
+
+	sockLink := filepath.Join(runDir, "sockets")
+	if err := ForceLink(tmpSockDir, sockLink); err != nil {
+		return &VM{}, fmt.Errorf("Failed to link socket dir: %s", err)
+	}
+	log.Infof("VM:%s socketDir: %s symlink: %s", vmConfig.Name, tmpSockDir, sockLink)
+
 	log.Infof("newVM: Generating qcli Config rundir=%s", runDir)
-	qcfg, err := GenerateQConfig(runDir, vmConfig)
+	qcfg, err := GenerateQConfig(runDir, tmpSockDir, vmConfig)
 	if err != nil {
 		return &VM{}, fmt.Errorf("Failed to generate qcli Config from VM definition: %s", err)
 	}
@@ -179,13 +209,14 @@ func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (*VM, error)
 	log.Infof("newVM: generated qcli config parameters: %s", cmdParams)
 
 	return &VM{
-		Config: vmConfig,
-		Ctx:    ctx,
-		Cancel: cancelFn,
-		State:  VMInit,
-		Cmd:    exec.CommandContext(ctx, qcfg.Path, cmdParams...),
-		qcli:   qcfg,
-		RunDir: runDir,
+		Config:  vmConfig,
+		Ctx:     ctx,
+		Cancel:  cancelFn,
+		State:   VMInit,
+		Cmd:     exec.CommandContext(ctx, qcfg.Path, cmdParams...),
+		qcli:    qcfg,
+		RunDir:  runDir,
+		sockDir: tmpSockDir, // this must point to the /tmp path to remain short
 	}, nil
 }
 
@@ -237,7 +268,7 @@ func (v *VM) runVM() error {
 		log.Infof("VM:%s waiting for QEMU process to exit...", v.Name())
 		err = v.Cmd.Wait()
 		if err != nil {
-			errCh <- fmt.Errorf("VM:%s wait failed with: %s", stderr.String())
+			errCh <- fmt.Errorf("VM:%s wait failed with: %s", v.Name(), stderr.String())
 			return
 		}
 		log.Infof("VM:%s QEMU process exited", v.Name())

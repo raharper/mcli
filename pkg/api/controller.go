@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -314,4 +315,51 @@ func GetCommandErrorRCDefault(err error, rcError int) int {
 
 func GetCommandErrorRC(err error) int {
 	return GetCommandErrorRCDefault(err, 127)
+}
+
+func GetTempSocketDir() (string, error) {
+	d, err := ioutil.TempDir("/tmp", "msockets-*")
+	if err != nil {
+		return "", nil
+	}
+	if err := checkSocketDir(d); err != nil {
+		os.RemoveAll(d)
+		return "", err
+	}
+	return d, nil
+}
+
+// LinuxUnixSocketMaxLen - 108 chars max for a unix socket path (including null byte).
+const LinuxUnixSocketMaxLen int = 108
+
+func checkSocketDir(sdir string) error {
+	// just use this as a filename that might go there.
+	fname := "monitor.socket"
+	if len(sdir)+len(fname) >= LinuxUnixSocketMaxLen {
+		return fmt.Errorf("dir %s is too long (%d) to hold a unix socket", sdir, len(sdir))
+	}
+	return nil
+}
+
+func ForceLink(oldname, newname string) error {
+	if oldname == "" {
+		return fmt.Errorf("empty string for parameter 'oldname'")
+	}
+	if newname == "" {
+		return fmt.Errorf("empty string for parameter 'newname'")
+	}
+	if !PathExists(oldname) {
+		return fmt.Errorf("Source file %s does not exist", oldname)
+	}
+	log.Debugf("forceLink oldname=%s newname=%s", oldname, newname)
+	if err := os.Remove(newname); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("Failed removing %s before linking to %s: %s", newname, oldname, err)
+	}
+	if err := os.Symlink(oldname, newname); err != nil {
+		return fmt.Errorf("Failed linking %s -> %s: %s", oldname, newname, err)
+	}
+	if !PathExists(newname) {
+		return fmt.Errorf("Failed to symlink %s -> %s", newname, oldname)
+	}
+	return nil
 }
