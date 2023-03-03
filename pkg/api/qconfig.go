@@ -264,9 +264,8 @@ func (nd NicDef) QNetDevice(qti *qcli.QemuTypeIndex) (qcli.NetDevice, error) {
 	return ndev, nil
 }
 
-func ConfigureUEFIVars(c *qcli.Config, srcVars, runDir string) error {
-	// FIXME: secureboot boolean
-	uefiDev, err := qcli.NewSystemUEFIFirmwareDevice(false)
+func ConfigureUEFIVars(c *qcli.Config, srcVars, runDir string, secureBoot bool) error {
+	uefiDev, err := qcli.NewSystemUEFIFirmwareDevice(secureBoot)
 	if err != nil {
 		return fmt.Errorf("failed to create a UEFI Firmware Device: %s", err)
 	}
@@ -300,7 +299,7 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 		}
 	}
 
-	err = ConfigureUEFIVars(c, v.UEFIVars, runDir)
+	err = ConfigureUEFIVars(c, v.UEFIVars, runDir, v.SecureBoot)
 	if err != nil {
 		return c, fmt.Errorf("Error configuring UEFI Vars: %s", err)
 	}
@@ -367,6 +366,15 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 			return c, err
 		}
 		c.NetDevices = append(c.NetDevices, qnet)
+	}
+
+	if v.TPM {
+		c.TPM = qcli.TPMDevice{
+			ID:     "tpm0",
+			Driver: qcli.TPMTISDevice,
+			Path:   filepath.Join(runDir, "tpm0.sock"),
+			Type:   qcli.TPMEmulatorDevice,
+		}
 	}
 
 	return c, nil

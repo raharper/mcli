@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/msoap/byline"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -168,6 +169,69 @@ func EnsureDir(dir string) error {
 	return nil
 }
 
+func Which(commandName string) string {
+	return WhichInRoot(commandName, "")
+}
+
+func WhichInRoot(commandName string, root string) string {
+	cmd := []string{"sh", "-c", "command -v \"$0\"", commandName}
+	if root != "" && root != "/" {
+		cmd = append([]string{"chroot", root}, cmd...)
+	}
+	out, rc := RunCommandWithRc(cmd...)
+	if rc == 0 {
+		return strings.TrimSuffix(string(out), "\n")
+	}
+	if rc != 127 {
+		log.Warnf("checking for %s exited unexpected value %d\n", commandName, rc)
+	}
+	return ""
+}
+
+func LogCommand(args ...string) error {
+	return LogCommandWithFunc(log.Infof, args...)
+}
+
+func LogCommandDebug(args ...string) error {
+	return LogCommandWithFunc(log.Debugf, args...)
+}
+
+func LogCommandWithFunc(logf func(string, ...interface{}), args ...string) error {
+	cmd := exec.Command(args[0], args[1:]...)
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		logf("%s-fail | %s", err)
+		return err
+	}
+	cmd.Stderr = cmd.Stdout
+	err = cmd.Start()
+	if err != nil {
+		logf("%s-fail | %s", args[0], err)
+		return err
+	}
+	pid := cmd.Process.Pid
+	logf("|%d-start| %q", pid, args)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		err := byline.NewReader(stdoutPipe).Each(
+			func(line []byte) {
+				logf("|%d-out  | %s", pid, line[:len(line)-1])
+			}).Discard()
+		if err != nil {
+			log.Fatalf("Unexpected %s", err)
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
+	err = cmd.Wait()
+
+	logf("|%d-exit | rc=%d", pid, GetCommandErrorRC(err))
+	return err
+}
+
 // CopyFileBits - copy file content from a to b
 // differs from CopyFile in:
 //  - does not do permissions - new files created with 0644
@@ -218,6 +282,11 @@ func RunCommand(args ...string) error {
 		return fmt.Errorf("%s: %s: %s", strings.Join(args, " "), err, string(output))
 	}
 	return nil
+}
+
+func RunCommandWithRc(args ...string) ([]byte, int) {
+	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+	return out, GetCommandErrorRC(err)
 }
 
 func RunCommandWithOutputErrorRc(args ...string) ([]byte, []byte, int) {

@@ -254,6 +254,9 @@ type Config struct {
 	// SpiceDevice is the qemu spice protocol device for remote display
 	SpiceDevice SpiceDevice `yaml:"spice"`
 
+	// TPMDevice is a QEMU TPM device for guest OS use
+	TPM TPMDevice `yaml:"tpm"`
+
 	// Kernel is the guest kernel configuration.
 	Kernel Kernel `yaml:"kernel"`
 
@@ -448,6 +451,12 @@ func (config *Config) appendSpice() {
 	}
 }
 
+func (config *Config) appendTPM() {
+	if config.TPM.ID != "" {
+		config.devices = append(config.devices, config.TPM)
+	}
+}
+
 func (config *Config) appendKernel() {
 	if config.Kernel.Path != "" {
 		config.qemuParams = append(config.qemuParams, "-kernel")
@@ -633,6 +642,7 @@ func ConfigureParams(config *Config, logger QMPLog) ([]string, error) {
 	config.appendMachine()
 	config.appendCPUModel()
 	config.appendSpice()
+	config.appendTPM()
 	err = config.appendQMPSockets()
 	if err != nil {
 		return []string{}, err

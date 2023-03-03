@@ -9,7 +9,7 @@ var (
 	deviceBlockPFlashRWString = "-drive file=uefi_nvram.fd,id=pflash1,if=pflash,format=raw"
 	deviceBlockVirtioCDRom    = "-drive file=ubuntu.iso,id=cdrom0,if=none,format=raw,aio=threads,media=cdrom,readonly=on -device virtio-blk-pci,drive=cdrom0,serial=cdrom0,bootindex=0,disable-modern=false,addr=0x1e,bus=pcie.0,scsi=off,config-wce=off"
 	deviceBlockIDECDRom       = "-drive file=ubuntu.iso,id=cdrom0,if=none,format=raw,aio=threads,media=cdrom,readonly=on -device ide-cd,drive=cdrom0,serial=ubuntu.iso,bootindex=0,bus=ide.0"
-	deviceBlockSCSIHDStr      = "-drive file=root-disk.qcow,id=drive0,if=none,format=qcow2,aio=threads,cache=unsafe,discard=unmap,detect-zeroes=unmap -device scsi-hd,drive=drive0,serial=root-disk,bootindex=1,bus=scsi0.0,logical_block_size=512,physical_block_size=512,config-wce=off"
+	deviceBlockSCSIHDStr      = "-drive file=root-disk.qcow,id=drive0,if=none,format=qcow2,aio=threads,cache=unsafe,discard=unmap,detect-zeroes=unmap -device scsi-hd,drive=drive0,serial=root-disk,bootindex=1,bus=scsi0.0,logical_block_size=512,physical_block_size=512"
 )
 
 func TestAppendDeviceBlock(t *testing.T) {

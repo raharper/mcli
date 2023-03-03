@@ -160,6 +160,12 @@ const (
 
 	// PIIX4 IDE Controller
 	PIIX4IDEController DeviceDriver = "piix4-ide"
+
+	// TPM-TIS TPM Device
+	TPMTISDevice DeviceDriver = "tpm-tis"
+
+	// TPM-CRB TPM Device
+	TPMCRBDebice DeviceDriver = "tpm-crb"
 )
 
 func (config *Config) appendDevices() error {

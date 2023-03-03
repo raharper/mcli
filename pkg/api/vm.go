@@ -119,6 +119,7 @@ type VM struct {
 	State  VMState
 	RunDir string
 	Cmd    *exec.Cmd
+	SwTPM  *SwTPM
 	qcli   *qcli.Config
 	qmp    *qcli.QMP
 	qmpCh  chan struct{}
@@ -155,6 +156,10 @@ func (v *VM) SerialSocket() (string, error) {
 
 func (v *VM) SpiceDevice() (qcli.SpiceDevice, error) {
 	return v.qcli.SpiceDevice, nil
+}
+
+func (v *VM) TPMSocket() (string, error) {
+	return v.qcli.TPM.Path, nil
 }
 
 func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (*VM, error) {
@@ -198,6 +203,28 @@ func (v *VM) runVM() error {
 		defer func() {
 			v.wg.Done()
 		}()
+
+		if v.Config.TPM {
+			tpmDir := filepath.Join(v.RunDir, "tpm")
+			if err := EnsureDir(tpmDir); err != nil {
+				errCh <- fmt.Errorf("Failed to create tpm state dir: %s", err)
+				return
+			}
+			tpmSocket, err := v.TPMSocket()
+			if err != nil {
+				errCh <- fmt.Errorf("Failed to get TPM Socket path: %s", err)
+				return
+			}
+			v.SwTPM = &SwTPM{
+				StateDir: tpmDir,
+				Socket:   tpmSocket,
+				Version:  v.Config.TPMVersion,
+			}
+			if err := v.SwTPM.Start(); err != nil {
+				errCh <- fmt.Errorf("Failed to start SwTPM: %s", err)
+				return
+			}
+		}
 
 		log.Infof("VM:%s starting QEMU process", v.Name())
 		v.Cmd.Stderr = &stderr
@@ -412,6 +439,11 @@ func (v *VM) Stop(force bool) error {
 			log.Errorf("Error killing VM:%s PID:%d Error:%v", v.Name(), pid, err)
 		}
 	}
+
+	if v.Config.TPM {
+		v.SwTPM.Stop()
+	}
+
 	v.State = VMStopped
 	return nil
 }
