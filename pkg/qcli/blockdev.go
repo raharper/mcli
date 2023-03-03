@@ -209,6 +209,10 @@ func (blkdev BlockDevice) QemuParams(config *Config) []string {
 		driveParams = append(driveParams, fmt.Sprintf("detect-zeroes=%s", blkdev.DetectZeroes))
 	}
 
+	if blkdev.Media != "" {
+		driveParams = append(driveParams, fmt.Sprintf("media=%s", blkdev.Media))
+	}
+
 	if blkdev.ReadOnly {
 		driveParams = append(driveParams, "readonly=on")
 	}
@@ -249,6 +253,18 @@ func (blkdev BlockDevice) QemuParams(config *Config) []string {
 		}
 	}
 
+	if blkdev.Driver == SCSIHD && blkdev.Bus != "" {
+		deviceParams = append(deviceParams, fmt.Sprintf("bus=%s", blkdev.Bus))
+	}
+
+	if blkdev.Driver == IDECDROM {
+		bus := "ide.0"
+		if blkdev.Bus != "" {
+			bus = blkdev.Bus
+		}
+		deviceParams = append(deviceParams, fmt.Sprintf("bus=%s", bus))
+	}
+
 	if blkdev.RotationRate > 0 && !strings.HasPrefix(string(blkdev.Driver), "virtio") {
 		deviceParams = append(deviceParams, fmt.Sprintf("rotation_rate=%d", blkdev.RotationRate))
 	}
@@ -262,7 +278,7 @@ func (blkdev BlockDevice) QemuParams(config *Config) []string {
 		deviceParams = append(deviceParams, "scsi=off")
 	}
 
-	if !blkdev.WCE && blkdev.Driver != IDECDROM {
+	if !blkdev.WCE && blkdev.Driver == VirtioBlock {
 		deviceParams = append(deviceParams, "config-wce=off")
 	}
 

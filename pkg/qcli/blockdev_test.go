@@ -7,6 +7,9 @@ var (
 	deviceBlockAddrString     = "-drive file=/var/lib/vm.img,id=hd0,if=none,format=qcow2 -device virtio-blk-pci,drive=hd0,serial=hd0,bootindex=0,disable-modern=false,addr=0x07,bus=pcie.0,scsi=off,config-wce=off"
 	deviceBlockPFlashROString = "-drive file=/usr/share/OVMF/OVMF_CODE.fd,id=pflash0,if=pflash,format=raw,readonly=on"
 	deviceBlockPFlashRWString = "-drive file=uefi_nvram.fd,id=pflash1,if=pflash,format=raw"
+	deviceBlockVirtioCDRom    = "-drive file=ubuntu.iso,id=cdrom0,if=none,format=raw,aio=threads,media=cdrom,readonly=on -device virtio-blk-pci,drive=cdrom0,serial=cdrom0,bootindex=0,disable-modern=false,addr=0x1e,bus=pcie.0,scsi=off,config-wce=off"
+	deviceBlockIDECDRom       = "-drive file=ubuntu.iso,id=cdrom0,if=none,format=raw,aio=threads,media=cdrom,readonly=on -device ide-cd,drive=cdrom0,serial=ubuntu.iso,bootindex=0,bus=ide.0"
+	deviceBlockSCSIHDStr      = "-drive file=root-disk.qcow,id=drive0,if=none,format=qcow2,aio=threads,cache=unsafe,discard=unmap,detect-zeroes=unmap -device scsi-hd,drive=drive0,serial=root-disk,bootindex=1,bus=scsi0.0,logical_block_size=512,physical_block_size=512,config-wce=off"
 )
 
 func TestAppendDeviceBlock(t *testing.T) {
@@ -49,6 +52,65 @@ func TestAppendDeviceBlockAddr(t *testing.T) {
 		blkdev.DevNo = DevNo
 	}
 	testAppend(blkdev, deviceBlockAddrString, t)
+}
+
+func TestAppendDeviceBlockVirtioCDROM(t *testing.T) {
+	blkdev := BlockDevice{
+		Driver:    VirtioBlock,
+		Interface: NoInterface,
+		ID:        "cdrom0",
+		AIO:       Threads,
+		Serial:    "cdrom0",
+		File:      "ubuntu.iso",
+		Format:    RAW,
+		ReadOnly:  true,
+		Media:     "cdrom",
+		BootIndex: 0,
+	}
+	if blkdev.Transport.isVirtioCCW(nil) {
+		blkdev.DevNo = DevNo
+	}
+	testAppend(blkdev, deviceBlockVirtioCDRom, t)
+}
+
+func TestAppendDeviceBlockIDECDROM(t *testing.T) {
+	blkdev := BlockDevice{
+		Driver:    IDECDROM,
+		Interface: NoInterface,
+		ID:        "cdrom0",
+		AIO:       Threads,
+		Serial:    "ubuntu.iso",
+		File:      "ubuntu.iso",
+		Format:    RAW,
+		ReadOnly:  true,
+		Media:     "cdrom",
+		BootIndex: 0,
+		Bus:       "ide.0",
+	}
+	if blkdev.Transport.isVirtioCCW(nil) {
+		blkdev.DevNo = DevNo
+	}
+	testAppend(blkdev, deviceBlockIDECDRom, t)
+}
+
+func TestAppendDeviceBlockSCSIHD(t *testing.T) {
+	blkdev := BlockDevice{
+		Driver:       SCSIHD,
+		SCSI:         true,
+		Interface:    NoInterface,
+		ID:           "drive0",
+		AIO:          Threads,
+		Serial:       "root-disk",
+		File:         "root-disk.qcow",
+		Format:       QCOW2,
+		BootIndex:    1,
+		Bus:          "scsi0.0",
+		Cache:        CacheModeUnsafe,
+		Discard:      DiscardUnmap,
+		DetectZeroes: DetectZeroesUnmap,
+		BlockSize:    512,
+	}
+	testAppend(blkdev, deviceBlockSCSIHDStr, t)
 }
 
 // FIXME: add Scsi + Rotation_rate good/bad tests

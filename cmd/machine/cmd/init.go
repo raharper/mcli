@@ -21,6 +21,7 @@ import (
 	"mcli-v2/pkg/api"
 	"os"
 
+	"github.com/apex/log"
 	petname "github.com/dustinkirkland/golang-petname"
 	"github.com/lxc/lxd/shared"
 	"github.com/lxc/lxd/shared/termios"
@@ -56,12 +57,15 @@ config:
       size: 50GiB
   nics:
     - id: nic0
-      device: vrtio-net
+      device: virtio-net
       network: user
 `
 
 func doInit(cmd *cobra.Command, args []string) {
 	fileName := cmd.Flag("file").Value.String()
+	if fileName == "" {
+		fileName = "-"
+	}
 	// Hi cobra, this is awkward...  why isn't there .Value.Bool()?
 	editFile, _ := cmd.Flags().GetBool("edit")
 	var machineName string
@@ -77,6 +81,7 @@ func doInit(cmd *cobra.Command, args []string) {
 }
 
 func DoCreateMachine(machineName, fileName string, editFile bool) error {
+	log.Infof("DoCreateMachine Name:%s File:%s Edit:%v", machineName, fileName, editFile)
 	var err error
 	onTerm := termios.IsTerminal(unix.Stdin)
 	machineBytes := []byte(defaultMachine)
@@ -88,8 +93,13 @@ func DoCreateMachine(machineName, fileName string, editFile bool) error {
 	}
 	newMachine.Name = machineName
 	newMachine.Config.Name = machineName
+	newMac, err := api.RandomQemuMAC()
+	if err != nil {
+		return fmt.Errorf("Failed to generate a random QEMU MAC address: %s", err)
+	}
+	newMachine.Config.Nics[0].Mac = newMac
 
-	fmt.Printf("Creating machine %s ...\n", machineName)
+	log.Infof("Creating machine...")
 
 	// check if edit is set whether we're a terminal or not
 	// if file, read contents, else read from stdin

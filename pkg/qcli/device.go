@@ -154,6 +154,12 @@ const (
 
 	// AHCI ICH9 Controller
 	ICH9AHCIController DeviceDriver = "ich9-ahci"
+
+	// PIIX3 IDE Controller
+	PIIX3IDEController DeviceDriver = "piix3-ide"
+
+	// PIIX4 IDE Controller
+	PIIX4IDEController DeviceDriver = "piix4-ide"
 )
 
 func (config *Config) appendDevices() error {
@@ -165,6 +171,22 @@ func (config *Config) appendDevices() error {
 	// we could have a single switch case which matches .+Devices and then
 	// appends each device to config.devices.
 	fields := reflect.VisibleFields(reflect.TypeOf(Config{}))
+
+	// insert pci and scsi controllers first
+	for _, field := range fields {
+		switch field.Name {
+		case "PCIeRootPortDevices":
+			for _, d := range config.PCIeRootPortDevices {
+				config.devices = append(config.devices, d)
+			}
+		case "SCSIControllerDevices": // controllers have to be before blkdev
+			for _, d := range config.SCSIControllerDevices {
+				config.devices = append(config.devices, d)
+			}
+		}
+	}
+
+	// insert the remaining devices
 	for _, field := range fields {
 		switch field.Name {
 		case "BlkDevices":
@@ -187,10 +209,6 @@ func (config *Config) appendDevices() error {
 			for _, d := range config.NetDevices {
 				config.devices = append(config.devices, d)
 			}
-		case "PCIeRootPortDevices":
-			for _, d := range config.PCIeRootPortDevices {
-				config.devices = append(config.devices, d)
-			}
 		case "RngDevices":
 			for _, d := range config.RngDevices {
 				config.devices = append(config.devices, d)
@@ -201,10 +219,6 @@ func (config *Config) appendDevices() error {
 			}
 		case "UEFIFirmwareDevices":
 			for _, d := range config.UEFIFirmwareDevices {
-				config.devices = append(config.devices, d)
-			}
-		case "SCSIControllerDevices":
-			for _, d := range config.SCSIControllerDevices {
 				config.devices = append(config.devices, d)
 			}
 		}

@@ -17,8 +17,10 @@ package api
 
 import (
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type NetworkDef struct {
@@ -134,4 +136,37 @@ func (p *PortRule) UnmarshalYAML(unmarshal func(interface{}) error) error {
 func (p *PortRule) String() string {
 	return fmt.Sprintf("%s:%s:%d-%s:%d", p.Protocol,
 		p.Host.Address, p.Host.Port, p.Guest.Address, p.Guest.Port)
+}
+
+// https://stackoverflow.com/questions/21018729/generate-mac-address-in-go
+func RandomMAC() (string, error) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	buf := make([]byte, 6)
+	_, err := r.Read(buf)
+	if err != nil {
+		return "", fmt.Errorf("Failed reading random bytes")
+	}
+
+	// Set local bit, ensure unicast address
+	buf[0] = (buf[0] | 2) & 0xfe
+	return fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]), nil
+}
+
+func RandomQemuMAC() (string, error) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	buf := make([]byte, 6)
+	suf := make([]byte, 3)
+	_, err := r.Read(suf)
+	if err != nil {
+		return "", fmt.Errorf("Failed reading random bytes")
+	}
+	// QEMU OUI prefix 52:54:00
+	buf[0] = 0x52
+	buf[1] = 0x54
+	buf[2] = 0x00
+	buf[3] = suf[0]
+	buf[4] = suf[1]
+	buf[5] = suf[2]
+	return fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]), nil
 }

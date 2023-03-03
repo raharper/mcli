@@ -18,6 +18,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"mcli-v2/pkg/api"
 	"net/http"
 	"os"
@@ -129,6 +130,9 @@ func Execute() {
 }
 
 func init() {
+	// init our rng
+	rand.Seed(time.Now().UTC().UnixNano())
+
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.server.yaml)")
 }

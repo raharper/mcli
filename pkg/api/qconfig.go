@@ -170,13 +170,19 @@ func (qd *QemuDisk) ImportDiskImage(imageDir string) error {
 func (qd *QemuDisk) QBlockDevice(qti *qcli.QemuTypeIndex) (qcli.BlockDevice, error) {
 	log.Infof("QemuDisk -> QBlockDevice() %+v", qd)
 	blk := qcli.BlockDevice{
-		ID:        fmt.Sprintf("drive%d", qti.NextDriveIndex()),
-		File:      qd.File,
-		Interface: qcli.NoInterface,
-		AIO:       qcli.Threads,
-		BlockSize: qd.BlockSize,
-		BusAddr:   qd.BusAddr,
-		ReadOnly:  qd.ReadOnly,
+		ID:           fmt.Sprintf("drive%d", qti.NextDriveIndex()),
+		File:         qd.File,
+		Interface:    qcli.NoInterface,
+		AIO:          qcli.Threads,
+		BusAddr:      qd.BusAddr,
+		ReadOnly:     qd.ReadOnly,
+		Cache:        qcli.CacheModeUnsafe,
+		Discard:      qcli.DiscardUnmap,
+		DetectZeroes: qcli.DetectZeroesUnmap,
+		Serial:       qd.serial(),
+	}
+	if blk.BlockSize == 0 {
+		blk.BlockSize = 512
 	}
 	if qd.BootIndex != nil {
 		blk.BootIndex = *qd.BootIndex
@@ -202,11 +208,18 @@ func (qd *QemuDisk) QBlockDevice(qti *qcli.QemuTypeIndex) (qcli.BlockDevice, err
 	switch qd.Attach {
 	case "scsi":
 		blk.Driver = qcli.SCSIHD
+		blk.SCSI = true
+		// FIXME: we should scan disks for buses, create buses, then
+		// walk disks a second time to configure bus= for each device
+		blk.Bus = fmt.Sprintf("scsi0.%d", qti.Next("scsi-bus"))
 	case "nvme":
 		blk.Driver = qcli.NVME
 	case "virtio":
 		blk.Driver = qcli.VirtioBlock
 		blk.Bus = "pcie.0"
+		if qd.Type == "cdrom" {
+			blk.Media = "cdrom"
+		}
 	case "ide":
 		if qd.Type == "cdrom" {
 			blk.Driver = qcli.IDECDROM
@@ -234,6 +247,13 @@ func (nd NicDef) QNetDevice(qti *qcli.QemuTypeIndex) (qcli.NetDevice, error) {
 			IPV4: true,
 		},
 		Driver: qcli.DeviceDriver(nd.Device),
+	}
+	if ndev.MACAddress == "" {
+		mac, err := RandomQemuMAC()
+		if err != nil {
+			return qcli.NetDevice{}, fmt.Errorf("Failed to generate a random QEMU mac: %s", err)
+		}
+		ndev.MACAddress = mac
 	}
 	if nd.BootIndex != nil {
 		ndev.BootIndex = *nd.BootIndex
@@ -286,11 +306,14 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 	}
 
 	if v.Cdrom != "" {
+		bootindex := 0
 		qd := QemuDisk{
-			File:   v.Cdrom,
-			Format: "raw",
-			Attach: "ide",
-			Type:   "cdrom",
+			File:      v.Cdrom,
+			Format:    "raw",
+			Attach:    "virtio",
+			Type:      "cdrom",
+			ReadOnly:  true,
+			BootIndex: &bootindex,
 		}
 		v.Disks = append(v.Disks, qd)
 	}
@@ -319,15 +342,21 @@ func GenerateQConfig(runDir string, v VMDef) (*qcli.Config, error) {
 		}
 		c.BlkDevices = append(c.BlkDevices, qblk)
 
-		_, ok := busses[disk.Attach]
-		// we only one controller
+		d, ok := busses[disk.Attach]
+		log.Infof("busses[%s] => %s %v", disk.Attach, d, ok)
+		// we only need one controller per attach
 		if !ok {
+			log.Infof("Disk %s missing bus for attach:%s", disk.File, disk.Attach)
 			if disk.Attach == "scsi" {
+				log.Infof("Attaching a scsi controller...")
 				scsiCon := qcli.SCSIControllerDevice{
 					ID:       fmt.Sprintf("scsi%d", qti.Next("scsi")),
 					IOThread: fmt.Sprintf("iothread%d", qti.Next("iothread")),
 				}
 				c.SCSIControllerDevices = append(c.SCSIControllerDevices, scsiCon)
+			}
+			if disk.Attach == "ide" {
+				log.Infof("FIXME: Attaching an IDE Controller...")
 			}
 		}
 	}

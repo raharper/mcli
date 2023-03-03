@@ -1,0 +1,15 @@
+name: vm1
+type: kvm
+ephemeral: false
+description: the minimal amount of config to define a machine
+config:
+  boot: cdrom
+  uefi: true
+  tpm: true
+  tpm-version: 2.0
+  secure-boot: true
+  cdrom: images/ubuntu-22.04.2-desktop-amd64.iso
+  disks:
+      - file: root-disk.qcow
+        type: ssd
+        size: 50GiB
