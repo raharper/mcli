@@ -22,7 +22,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/apex/log"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -64,29 +64,39 @@ func doConsole(cmd *cobra.Command, args []string) {
 	}
 	machineName := args[0]
 
-	request := api.MachineConsoleRequest{ConsoleType: consoleType}
-	endpoint := fmt.Sprintf("machines/%s/console", machineName)
-	consoleURL := api.GetAPIURL(endpoint)
-	if len(consoleURL) == 0 {
-		panic(fmt.Sprintf("Failed to get API URL for 'machines/%s/console'", machineName))
-	}
-
-	resp, err := rootclient.R().EnableTrace().SetBody(request).Post(consoleURL)
+	consoleInfo, err := GetMachineConsoleInfo(machineName, consoleType)
 	if err != nil {
-		panic(fmt.Sprintf("Failed POST to %s: %s", endpoint, err))
-	}
-	fmt.Printf("%s %s\n", resp, resp.Status())
-
-	consoleInfo := api.ConsoleInfo{}
-	err = json.Unmarshal(resp.Body(), &consoleInfo)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to unmarshal response from %s: %s", endpoint, err))
+		panic(err)
 	}
 
 	err = DoConsoleAttach(machineName, consoleInfo)
 	if err != nil {
 		panic(err)
 	}
+}
+
+func GetMachineConsoleInfo(machineName, consoleType string) (api.ConsoleInfo, error) {
+	consoleInfo := api.ConsoleInfo{}
+
+	request := api.MachineConsoleRequest{ConsoleType: consoleType}
+	endpoint := fmt.Sprintf("machines/%s/console", machineName)
+	consoleURL := api.GetAPIURL(endpoint)
+	if len(consoleURL) == 0 {
+		return consoleInfo, fmt.Errorf("Failed to get API URL for 'machines/%s/console'", machineName)
+	}
+
+	resp, err := rootclient.R().EnableTrace().SetBody(request).Post(consoleURL)
+	if err != nil {
+		return consoleInfo, fmt.Errorf("Failed POST to %s: %s", endpoint, err)
+	}
+	fmt.Printf("%s %s\n", resp, resp.Status())
+
+	err = json.Unmarshal(resp.Body(), &consoleInfo)
+	if err != nil {
+		return consoleInfo, fmt.Errorf("Failed to unmarshal response from %s: %s", endpoint, err)
+	}
+
+	return consoleInfo, nil
 }
 
 func doConsoleAttach(machineName string, consoleInfo api.ConsoleInfo) error {
