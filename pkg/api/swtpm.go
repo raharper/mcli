@@ -55,7 +55,7 @@ const swTPMLocalCaOptionsTpl = `
 --tpm-manufacturer IBM
 --tpm-model swtpm-libtpms
 --tpm-version {{.Version}}
---platform-manufacturer Atomix
+--platform-manufacturer MachineOS
 --platform-version 2.1
 --platform-model QEMU
 `

@@ -141,6 +141,10 @@ func NewDefaultConfig(name string, numCpus, numMemMB uint32, sockDir string) (*q
 func (qd *QemuDisk) ImportDiskImage(imageDir string) error {
 	// What to do about sparse? use reflink and sparse=auto for now.
 	if qd.Size > 0 {
+		if PathExists(qd.File) {
+			log.Infof("Skipping creation of existing disk: %s", qd.File)
+			return nil
+		}
 		return qd.Create()
 	}
 
@@ -151,8 +155,6 @@ func (qd *QemuDisk) ImportDiskImage(imageDir string) error {
 	srcFilePath := qd.File
 	destFilePath := filepath.Join(imageDir, filepath.Base(srcFilePath))
 	qd.File = destFilePath
-
-	log.Infof("Importing VM disk qd.File=%q dest=%q", srcFilePath, destFilePath)
 
 	if srcFilePath != destFilePath || !PathExists(destFilePath) {
 		log.Infof("Importing VM disk '%s' -> '%s'", srcFilePath, destFilePath)
@@ -168,7 +170,7 @@ func (qd *QemuDisk) ImportDiskImage(imageDir string) error {
 }
 
 func (qd *QemuDisk) QBlockDevice(qti *qcli.QemuTypeIndex) (qcli.BlockDevice, error) {
-	log.Infof("QemuDisk -> QBlockDevice() %+v", qd)
+	log.Debugf("QemuDisk -> QBlockDevice() %+v", qd)
 	blk := qcli.BlockDevice{
 		ID:           fmt.Sprintf("drive%d", qti.NextDriveIndex()),
 		File:         qd.File,
@@ -276,13 +278,13 @@ func ConfigureUEFIVars(c *qcli.Config, srcVars, runDir string, secureBoot bool) 
 	}
 
 	dest := filepath.Join(runDir, qcli.UEFIVarsFileName)
-	log.Infof("copying %q -> %q", src, dest)
-	if err := CopyFileBits(src, dest); err != nil {
-		return fmt.Errorf("Failed to copy UEFI Vars from '%s' to '%q': %s", src, dest, err)
+	if !PathExists(dest) {
+		if err := CopyFileBits(src, dest); err != nil {
+			return fmt.Errorf("Failed to copy UEFI Vars from '%s' to '%q': %s", src, dest, err)
+		}
 	}
 	uefiDev.Vars = dest
 	c.UEFIFirmwareDevices = []qcli.UEFIFirmwareDevice{*uefiDev}
-	log.Infof("New UEFI Firmware Device: %+v", uefiDev)
 	return nil
 }
 
@@ -334,13 +336,10 @@ func GenerateQConfig(runDir, sockDir string, v VMDef) (*qcli.Config, error) {
 		}
 		c.BlkDevices = append(c.BlkDevices, qblk)
 
-		d, ok := busses[disk.Attach]
-		log.Infof("busses[%s] => %s %v", disk.Attach, d, ok)
+		_, ok := busses[disk.Attach]
 		// we only need one controller per attach
 		if !ok {
-			log.Infof("Disk %s missing bus for attach:%s", disk.File, disk.Attach)
 			if disk.Attach == "scsi" {
-				log.Infof("Attaching a scsi controller...")
 				scsiCon := qcli.SCSIControllerDevice{
 					ID:       fmt.Sprintf("scsi%d", qti.Next("scsi")),
 					IOThread: fmt.Sprintf("iothread%d", qti.Next("iothread")),

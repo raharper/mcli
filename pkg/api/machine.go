@@ -28,12 +28,14 @@ import (
 )
 
 const (
-	MachineStatusStopped  string = "stopped"
-	MachineStatusStarting string = "starting"
-	MachineStatusRunning  string = "running"
-	MachineStatusStopping string = "stopping"
-	SerialConsole         string = "console"
-	VGAConsole            string = "vga"
+	MachineStatusInitialized string = "initialized"
+	MachineStatusStopped     string = "stopped"
+	MachineStatusStarting    string = "starting"
+	MachineStatusRunning     string = "running"
+	MachineStatusStopping    string = "stopping"
+	MachineStatusFailed      string = "failed"
+	SerialConsole            string = "console"
+	VGAConsole               string = "vga"
 )
 
 type StopChannel chan struct{}
@@ -56,24 +58,33 @@ type Machine struct {
 }
 
 func (ctl *MachineController) GetMachineByName(machineName string) (*Machine, error) {
-	log.Infof("FindMachineByName: machines:%v machineName: %s", ctl.Machines, machineName)
-	for _, machine := range ctl.Machines {
+	for id := range ctl.Machines {
+		machine := ctl.Machines[id]
 		if machine.Name == machineName {
-			log.Infof("found it")
+			machine.GetStatus()
+			ctl.Machines[id] = machine
 			return &machine, nil
 		}
 	}
-	log.Infof("returning")
 	return &Machine{}, fmt.Errorf("Failed to find machine with Name: %s", machineName)
 }
 
 func (ctl *MachineController) GetMachines() []Machine {
+	for id := range ctl.Machines {
+		machine := ctl.Machines[id]
+		machine.GetStatus()
+		ctl.Machines[id] = machine
+	}
+
 	return ctl.Machines
 }
 
 func (ctl *MachineController) GetMachine(machineName string) (Machine, error) {
-	for _, machine := range ctl.Machines {
+	for id := range ctl.Machines {
+		machine := ctl.Machines[id]
 		if machine.Name == machineName {
+			machine.GetStatus()
+			ctl.Machines[id] = machine
 			return machine, nil
 		}
 	}
@@ -277,105 +288,108 @@ func LoadConfig(configFile string) (Machine, error) {
 	return newMachine, nil
 }
 
-func (cls *Machine) Start() error {
+func (m *Machine) GetStatus() string {
+	if m.instance == nil {
+		m.Status = MachineStatusStopped
+	} else {
+		status := m.instance.Status()
+		log.Debugf("VM:%s instance status: %s", m.instance.Name(), status.String())
+		// VMInit, VMStarted, VMStopped, VMFailed
+		switch status {
+		case VMInit:
+			m.Status = MachineStatusInitialized
+		case VMStarted:
+			m.Status = MachineStatusRunning
+		case VMStopped:
+			m.Status = MachineStatusStopped
+		case VMFailed:
+			m.Status = MachineStatusFailed
+		}
+	}
+	return m.Status
+}
+
+func (m *Machine) Start() error {
 
 	// check if machine is running, if so return
-	if cls.IsRunning() {
+	if m.IsRunning() {
 		return fmt.Errorf("Machine is already running")
 	}
 
-	cls.Status = MachineStatusStarting
-	vmCtx := cls.Context()
-	vm, err := newVM(vmCtx, cls.Name, cls.Config)
+	vmCtx := m.Context()
+	vm, err := newVM(vmCtx, m.Name, m.Config)
 	if err != nil {
-		cls.Status = MachineStatusStopped
-		return fmt.Errorf("Failed to create new VM '%s': %s", cls.Name, err)
+		return fmt.Errorf("Failed to create new VM '%s': %s", m.Name, err)
 	}
-	cls.instance = vm
-	log.Infof("machine.Start() vm=%v m.instance=%v calling vm.Start()", vm, cls.instance)
+	m.instance = vm
+	log.Infof("machine.Start()")
 
 	err = vm.Start()
 	if err != nil {
 		forceStop := true
 		vm.Stop(forceStop)
-		cls.Status = MachineStatusStopped
-		return fmt.Errorf("Failed to start VM '%s.%s': %s", cls.Name, vm.Config.Name, err)
+		return fmt.Errorf("Failed to start VM '%s.%s': %s", m.Name, vm.Config.Name, err)
 	}
 
-	cls.vmCount.Add(1)
-	cls.Status = MachineStatusRunning
+	m.vmCount.Add(1)
 	return nil
 }
 
-func (cls *Machine) Stop(force bool) error {
+func (m *Machine) Stop(force bool) error {
 
-	log.Infof("Machine.Stop called on machine %s, status: %s, force: %v", cls.Name, cls.Status, force)
+	log.Infof("Machine.Stop called on machine %s, status: %s, force: %v", m.Name, m.GetStatus(), force)
 	// check if machine is stopped, if so return
-	if !cls.IsRunning() {
+	if !m.IsRunning() {
 		return fmt.Errorf("Machine is already stopped")
 	}
 
-	if cls.instance != nil {
-		log.Infof("Machine.Stop, VM instance: %s, calling stop", cls.Name)
-		err := cls.instance.Stop(force)
+	if m.instance != nil {
+		log.Infof("Machine.Stop, VM instance: %s, calling stop", m.Name)
+		err := m.instance.Stop(force)
 		if err != nil {
-			return fmt.Errorf("Failed to stop VM '%s': %s", cls.Name, err)
+			return fmt.Errorf("Failed to stop VM '%s': %s", m.Name, err)
 		}
-		cls.vmCount.Done()
+		m.vmCount.Done()
 	} else {
 		log.Debugf("Machine instanace was nil, marking stop")
 	}
-	cls.Status = MachineStatusStopped
+	m.Status = MachineStatusStopped
 	return nil
 }
 
-func (cls *Machine) Delete() error {
+func (m *Machine) Delete() error {
 	// Stop machine, if running
 	// Delete VM (stop and remove state)
 	// Remove Machine Config
 
-	log.Infof("Machine.Delete called on machine %s, status: %s", cls.Name, cls.Status)
+	log.Infof("Machine.Delete called on machine %s, status: %s", m.Name, m.GetStatus())
 
-	if cls.instance != nil {
-		if cls.IsRunning() {
-			forceStop := true
-			err := cls.Stop(forceStop)
-			if err != nil {
-				return fmt.Errorf("Failed to stop machine '%s': %s", cls.Name, err)
-			}
-		}
-
-		log.Infof("Machine.Delete, VM instance: %s, calling delete", cls.Name)
-		err := cls.Delete()
+	if m.instance != nil {
+		log.Infof("Machine.Delete, VM instance: %s, calling delete", m.Name)
+		err := m.instance.Delete()
 		if err != nil {
-			return fmt.Errorf("Failed to delete VM '%s': %s", cls.Name, err)
+			return fmt.Errorf("Failed to delete VM '%s': %s", m.Name, err)
 		}
 	}
-	cls.instance = nil
 
-	dirs := []string{cls.ConfigDir(), cls.DataDir(), cls.StateDir()}
+	dirs := []string{m.ConfigDir(), m.DataDir(), m.StateDir()}
 	for _, dir := range dirs {
 		if PathExists(dir) {
 			log.Infof("Removing machine dir %q", dir)
 			err := os.RemoveAll(dir)
 			if err != nil {
-				return fmt.Errorf("Failed to remove machine %s dir %q", cls.Name, dir)
+				return fmt.Errorf("Failed to remove machine %s dir %q", m.Name, dir)
 			}
 		}
 	}
 
+	m.instance = nil
+
 	return nil
 }
 
-func (cls *Machine) IsRunning() bool {
-	if cls.instance != nil {
-		if cls.Status == MachineStatusRunning || cls.Status == MachineStatusStarting {
-			return true
-		}
-	} else {
-		log.Debugf("IsRunning called on Machine with nil instance")
-	}
-	return false
+func (m *Machine) IsRunning() bool {
+	return m.GetStatus() == MachineStatusRunning
 }
 
 func (m *Machine) SerialSocket() (string, error) {

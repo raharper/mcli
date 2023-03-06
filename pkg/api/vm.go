@@ -41,6 +41,23 @@ const (
 	VMCleaned
 )
 
+func (v VMState) String() string {
+	switch v {
+	case VMInit:
+		return "initialized"
+	case VMStarted:
+		return "started"
+	case VMStopped:
+		return "stopped"
+	case VMFailed:
+		return "failed"
+	case VMCleaned:
+		return "cleaned"
+	default:
+		return fmt.Sprintf("unknown VMState %d", v)
+	}
+}
+
 type VMDef struct {
 	Name       string     `yaml:"name"`
 	Cpus       uint32     `yaml:"cpus" default:1`
@@ -194,9 +211,8 @@ func newVM(ctx context.Context, clusterName string, vmConfig VMDef) (*VM, error)
 	if err := ForceLink(tmpSockDir, sockLink); err != nil {
 		return &VM{}, fmt.Errorf("Failed to link socket dir: %s", err)
 	}
-	log.Infof("VM:%s socketDir: %s symlink: %s", vmConfig.Name, tmpSockDir, sockLink)
 
-	log.Infof("newVM: Generating qcli Config rundir=%s", runDir)
+	log.Infof("newVM: Generating QEMU Config")
 	qcfg, err := GenerateQConfig(runDir, tmpSockDir, vmConfig)
 	if err != nil {
 		return &VM{}, fmt.Errorf("Failed to generate qcli Config from VM definition: %s", err)
@@ -233,6 +249,9 @@ func (v *VM) runVM() error {
 		var stderr bytes.Buffer
 		defer func() {
 			v.wg.Done()
+			if v.State != VMFailed {
+				v.State = VMStopped
+			}
 		}()
 
 		if v.Config.TPM {
@@ -265,6 +284,7 @@ func (v *VM) runVM() error {
 			return
 		}
 
+		v.State = VMStarted
 		log.Infof("VM:%s waiting for QEMU process to exit...", v.Name())
 		err = v.Cmd.Wait()
 		if err != nil {
@@ -279,6 +299,7 @@ func (v *VM) runVM() error {
 	case err := <-errCh:
 		if err != nil {
 			log.Errorf("runVM failed: %s", err)
+			v.State = VMFailed
 			return err
 		}
 	}
@@ -386,26 +407,30 @@ func (v *VM) BackgroundRun() error {
 	return nil
 }
 
-func (v *VM) Status() error {
+func (v *VM) QMPStatus() qcli.RunState {
 	if v.qmp != nil {
 		vmName := v.Name()
 		log.Infof("VM:%s querying CPUInfo via QMP...", vmName)
 		cpuInfo, err := v.qmp.ExecQueryCpus(context.TODO())
 		if err != nil {
-			return err
+			return qcli.RunStateUnknown
 		}
 		log.Infof("VM:%s has %d CPUs", vmName, len(cpuInfo))
 
 		log.Infof("VM:%s querying VM Status via QMP...", vmName)
 		status, err := v.qmp.ExecuteQueryStatus(context.TODO())
 		if err != nil {
-			return err
+			return qcli.RunStateUnknown
 		}
 		log.Infof("VM:%s Status:%s Running:%v", vmName, status.Status, status.Running)
-	} else {
-		log.Infof("VM:%s qmp socket is not ready yet", v.Name())
+		return qcli.ToRunState(status.Status)
 	}
-	return nil
+	log.Infof("VM:%s qmp socket is not ready yet", v.Name())
+	return qcli.RunStateUnknown
+}
+
+func (v *VM) Status() VMState {
+	return v.State
 }
 
 func (v *VM) Start() error {
@@ -416,8 +441,7 @@ func (v *VM) Start() error {
 		v.Stop(true)
 		return err
 	}
-	v.Status()
-	v.State = VMStarted
+	v.QMPStatus()
 	return nil
 }
 
@@ -475,7 +499,7 @@ func (v *VM) Stop(force bool) error {
 		v.SwTPM.Stop()
 	}
 
-	v.State = VMStopped
+	// when runVM goroutine exits, it marks v.State = VMStopped
 	return nil
 }
 
