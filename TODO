@@ -1,0 +1,11 @@
+- Fix Machine.name and Machine.Config.Name fields should be the same
+- Implement network subcommand to display configured networks
+- Implement default user networking between two VMs on one vmport
+- Auto-allocate hostport and configure hostfwd of guest ssh port
+- Implement machine ssh subcommand which queries VMs host port and invokes ssh
+with --port flag
+- Implement machined launching in unshare namespace to allow machined to create
+bridged networking and use passt/pasta to egress to host network.
+- Handle client failure to connect to server gracefully
+- Possibly implement an index in the LIST output so one can use the index or the
+  name of the VM to interact with the machines (this is like virsh)
