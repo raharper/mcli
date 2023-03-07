@@ -1,0 +1,50 @@
+name: qcli-cluster
+type: clustertype
+description: Test cluster for qcli VM configs
+ephemeral: false
+config:
+    networks:
+    - name: net1
+      type: user
+
+    connections:
+        cluster-vm1:
+            mgmt0: net1
+            fabric0: net1
+        cluster-vm2:
+            nic1: net1
+
+    machines:
+      - name: cluster-vm1
+        cpus: 16
+        memory: 16384
+        disks:
+            - file: images/barehost-lvm-uefi.qcow2
+              format: qcow2
+              type: ssd
+              attach: virtio
+              bootindex: 0
+            - file: vm1-data.raw
+              size: 100G
+              format: raw
+              attach: virtio
+              type: ssd
+        nics:
+          - device: e1000
+            addr: 3
+            mac: "aa:bb:cc:dd:ee:ff"
+            id: mgmt0
+          - device: virtio-net
+            addr: 4
+            mac: "ff:ee:dd:cc:bb:aa"
+            id: fabric0
+      - name: cluster-vm2
+        cdrom: images/ubuntu.iso
+        disks:
+            - file: vm2-bootdisk
+              size: 100G
+              format: qcow2
+              type: ssd
+              attach: virtio
+        nics:
+            - id: nic1

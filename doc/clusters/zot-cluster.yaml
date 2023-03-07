@@ -1,0 +1,32 @@
+type: ""
+config:
+  machines:
+  - name: zot-vm1
+    serial: ""
+    nics: []
+    disks: []
+    boot: ""
+    cdrom: ""
+    uefi-vars: ""
+    tpm: false
+    tpm-version: ""
+    extra-opts: []
+    secure-boot: false
+    gui: false
+  - name: storaged-vm2
+    serial: ""
+    nics: []
+    disks: []
+    boot: ""
+    cdrom: ""
+    uefi-vars: ""
+    tpm: false
+    tpm-version: ""
+    extra-opts: []
+    secure-boot: false
+    gui: false
+  networks: []
+  connections: {}
+description: zot cluster1
+ephemeral: false
+name: zot-cluster1

@@ -1,0 +1,9 @@
+name: c1
+type: clustertype
+ephemeral: false
+config:
+    machines:
+        - name: vm1
+          disks:
+              - file: home/vm1-disk.qcow2
+                type: ssd
