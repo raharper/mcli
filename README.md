@@ -3,57 +3,69 @@ This is the machine project built around a REST client/server model.
 machined will run as a daemon and create a UNIX socket for the local client,
 machine, to connect and interact with machined.
 
-== Install Prerequisites ==
+## Install Prerequisites
 
-1. sudo add-apt-repository -y ppa:puzzleos/dev  # for swtpm
-1. sudo apt install go || sudo snap install --classic go
-1. sudo apt install -y \
-        build-essential qemu-system-x86 qemu-utils spice-client-gtk soca
-1. sudo usermod --append --groups kvm $USER
-1. newgrp kvm  # or logout and login, run 'groups' command to confirm
+```
+sudo add-apt-repository -y ppa:puzzleos/dev
+sudo apt install golang-go || sudo snap install --classic go
+sudo apt install -y build-essential qemu-system-x86 qemu-utils spice-client-gtk socat swtpm
+sudo usermod --append --groups kvm $USER
+newgrp kvm  # or logout and login, run 'groups' command to confirm
+```
 
-
-== Build mcli ==
+## Build mcli
 
 1. tar xzf mcli-v2-0.9.tar.gz
 1. cd mcli-v2
 1. make
 
-== Run machined ==
+## Run machined
 
-=== Debugging/Testing ===
+### Debugging/Testing
 
 In a second shell/terminal
 
-1. ./bin/machined
+```
+newgrp kvm
+./bin/machined
+```
 
 When done, control-c to stop daemon.
 
-
-=== For hosting/running ===
+### For hosting/running
 
 In a second shell/terminal
 
-1. groups | grep kvm || newgrp kvm
-1. systemd-run --user --unit=machined.service --no-block bin/machined
-1. systemctl --user status machined.service
-1. journalctl --user --follow -u machined.service
+```
+groups | grep kvm || newgrp kvm
+systemd-run --user --unit=machined.service --no-block --working-directory=$PWD bin/machined
+systemctl --user status machined.service
+journalctl --user --follow -u machined.service
+```
 
-When done, `systemctl stop --user machined.service`
 
+When done, `systemctl stop --user machined.service` The service unit should
+be removed from the system.  Run the `systemd-run` command to start it up
+again.  If machined fails, you can clean up the unit with `systemctl --user reset-failed machined.service`
+then issue the stop command again to remove the unit.
 
-== Run machine client ==
+Note: on some systems, systemd-run --user prevents access to /dev/kvm via groups
+The current workaround is to `sudo chmod 0666 /dev/kvm`
 
-./bin machine list
+## Run machine client
 
-== Starting your first VM ==
+```
+/bin machine list
+```
+
+## Starting your first VM
 
 Download a live iso, like Ubuntu 22.04
 
 https://releases.ubuntu.com/22.04.2/ubuntu-22.04.2-desktop-amd64.iso
 
 ```
-$ cat >"vm1.yaml" <<EOF
+$ cat >vm1.yaml <<EOF
 name: vm1
 type: kvm
 ephemeral: false
@@ -86,7 +98,7 @@ config:
   tpm: true
   tpm-version: 2.0
   secure-boot: true
-  cdrom: $HOME/ubuntu-22.04.2-desktop-amd64.iso
+  cdrom: ubuntu-22.04.2-desktop-amd64.iso
   disks:
       - file: root-disk.qcow
         type: ssd
@@ -101,7 +113,3 @@ $ bin/machine start vm1
 200 OK
 $ bin/machine gui vm1
 ```
-
-
-
-
