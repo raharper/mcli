@@ -15,9 +15,12 @@ newgrp kvm  # or logout and login, run 'groups' command to confirm
 
 ## Build mcli
 
-1. tar xzf mcli-v2-0.9.tar.gz
-1. cd mcli-v2
-1. make
+```
+wget https://github.com/raharper/mcli/archive/refs/tags/v0.0.2.tar.gz
+tar xzf v0.0.2
+cd mcli-0.0.2
+make
+```
 
 ## Run machined
 
