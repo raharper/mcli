@@ -393,8 +393,6 @@ func (m *Machine) IsRunning() bool {
 }
 
 func (m *Machine) SerialSocket() (string, error) {
-	log.Infof("Machine %s querying serial socket path...", m.Name)
-	log.Infof("m.instance = %+v", m.instance)
 	return m.instance.SerialSocket()
 }
 

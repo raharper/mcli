@@ -46,6 +46,11 @@ func doServerRun(cmd *cobra.Command, args []string) {
 	conf := api.DefaultMachineDaemonConfig()
 	ctrl := api.NewController(conf)
 
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	log.Infof("machined starting up in %s", cwd)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 

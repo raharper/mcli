@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -150,6 +151,10 @@ func (qd *QemuDisk) ImportDiskImage(imageDir string) error {
 
 	if !PathExists(qd.File) {
 		return fmt.Errorf("Disk File %q does not exist", qd.File)
+	}
+
+	if qd.Type == "cdrom" {
+		log.Infof("Skipping import of cdrom: %s", qd.File)
 	}
 
 	srcFilePath := qd.File
@@ -299,10 +304,19 @@ func GenerateQConfig(runDir, sockDir string, v VMDef) (*qcli.Config, error) {
 		return c, fmt.Errorf("Error configuring UEFI Vars: %s", err)
 	}
 
+	cdromPath := v.Cdrom
+	if !strings.HasPrefix(v.Cdrom, "/") {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return c, fmt.Errorf("Failed to get current working dir: %s", err)
+		}
+		cdromPath = filepath.Join(cwd, v.Cdrom)
+	}
+
 	if v.Cdrom != "" {
 		bootindex := 0
 		qd := QemuDisk{
-			File:      v.Cdrom,
+			File:      cdromPath,
 			Format:    "raw",
 			Attach:    "virtio",
 			Type:      "cdrom",

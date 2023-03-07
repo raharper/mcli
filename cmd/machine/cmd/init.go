@@ -20,6 +20,8 @@ import (
 	"io/ioutil"
 	"mcli-v2/pkg/api"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/apex/log"
 	petname "github.com/dustinkirkland/golang-petname"
@@ -158,12 +160,60 @@ func DoCreateMachine(machineName, fileName string, editFile bool) error {
 			fmt.Errorf("Error calling editor: %s", err)
 		}
 	}
-	// persist config if not ephemeral
 
+	checkMachineFilePaths(&newMachine)
+
+	// persist config if not ephemeral
 	err = postMachine(newMachine)
 	if err != nil {
 		return fmt.Errorf("Error while POST'ing new machine config: %s", err)
 	}
+	return nil
+}
+
+func verifyPath(base, path string) (string, error) {
+	if strings.ContainsAny(path, "/") {
+		fullPath := filepath.Join(base, path)
+		if !api.PathExists(fullPath) {
+			return "", fmt.Errorf("Failed to find specified file '%s' after prepending base '%s'. No such file: %s", path, base, fullPath)
+		}
+		return fullPath, nil
+	}
+
+	return path, nil
+}
+
+func checkMachineFilePaths(newMachine *api.Machine) error {
+
+	log.Infof("Checking machine definition for local file paths...")
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("Failed to get current working dir: %s", err)
+	}
+
+	for idx := range newMachine.Config.Disks {
+		disk := newMachine.Config.Disks[idx]
+		if disk.File != "" {
+			newPath, err := verifyPath(cwd, disk.File)
+			if err != nil {
+				panic(err)
+			}
+			if newPath != disk.File {
+				log.Infof("Fully qualified disk path %s", newPath)
+				disk.File = newPath
+				newMachine.Config.Disks[idx] = disk
+			}
+		}
+	}
+	if newMachine.Config.Cdrom != "" {
+		newPath, err := verifyPath(cwd, newMachine.Config.Cdrom)
+		if err != nil {
+			panic(err)
+		}
+		log.Infof("Fully qualified cdrom path %s", newPath)
+		newMachine.Config.Cdrom = newPath
+	}
+
 	return nil
 }
 
