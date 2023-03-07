@@ -83,8 +83,8 @@ func (v *VMDef) adjustDiskBootIdx(qti *qcli.QemuTypeIndex) ([]int, error) {
 			*idx = qti.NextBootIndex()
 			disk.BootIndex = idx
 		} else {
-			if err := qti.SetBootIndex(*disk.BootIndex); err != nil {
-				return []int{}, fmt.Errorf("Failed to set Disk %s BootIndex %d: %s", disk.File, *disk.BootIndex, err)
+			if err := qti.SetBootIndex(disk.BootIndexValue()); err != nil {
+				return []int{}, fmt.Errorf("Failed to set BootIndex %d on disk %s: %s", disk.BootIndexValue(), disk.File, err)
 			}
 		}
 		allocated = append(allocated, *disk.BootIndex)
@@ -102,7 +102,7 @@ func (v *VMDef) adjustNetBootIdx(qti *qcli.QemuTypeIndex) ([]int, error) {
 			nic.BootIndex = idx
 		} else {
 			if err := qti.SetBootIndex(*nic.BootIndex); err != nil {
-				return []int{}, fmt.Errorf("Failed to set Nic %s BootIndex %d: %s", nic.Device, *nic.BootIndex, err)
+				return []int{}, fmt.Errorf("Failed to set BootIndex %d on nic %s: %s", *nic.BootIndex, nic.Device, err)
 			}
 		}
 		allocated = append(allocated, *nic.BootIndex)

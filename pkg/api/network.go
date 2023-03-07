@@ -41,6 +41,13 @@ type NicDef struct {
 	BootIndex *int       `yaml:"bootindex,omitempty`
 }
 
+func (n *NicDef) BootIndexValue() int {
+	if n.BootIndex != nil {
+		return *n.BootIndex
+	}
+	return -1
+}
+
 type VMNic struct {
 	BusAddr    string
 	DeviceType string

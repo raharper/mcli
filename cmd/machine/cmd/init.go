@@ -172,15 +172,18 @@ func DoCreateMachine(machineName, fileName string, editFile bool) error {
 }
 
 func verifyPath(base, path string) (string, error) {
-	if strings.ContainsAny(path, "/") {
-		fullPath := filepath.Join(base, path)
-		if !api.PathExists(fullPath) {
-			return "", fmt.Errorf("Failed to find specified file '%s' after prepending base '%s'. No such file: %s", path, base, fullPath)
-		}
-		return fullPath, nil
+	fullPath := path
+	if strings.HasPrefix(path, "/") {
+		fullPath = path
+	} else {
+		fullPath = filepath.Join(base, path)
 	}
 
-	return path, nil
+	if !api.PathExists(fullPath) {
+		return "", fmt.Errorf("Failed to find specified file '%s' after prepending base '%s'. No such file: %s", path, base, fullPath)
+	}
+
+	return fullPath, nil
 }
 
 func checkMachineFilePaths(newMachine *api.Machine) error {
@@ -193,7 +196,8 @@ func checkMachineFilePaths(newMachine *api.Machine) error {
 
 	for idx := range newMachine.Config.Disks {
 		disk := newMachine.Config.Disks[idx]
-		if disk.File != "" {
+		// skip disks to be created (file does not exist but size > 0)
+		if disk.File != "" && disk.Size == 0 {
 			newPath, err := verifyPath(cwd, disk.File)
 			if err != nil {
 				panic(err)
