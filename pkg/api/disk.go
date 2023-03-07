@@ -53,6 +53,13 @@ type QemuDisk struct {
 	ReadOnly  bool     `yaml:"read-only,omitempty"`
 }
 
+func (q *QemuDisk) BootIndexValue() int {
+	if q.BootIndex != nil {
+		return *q.BootIndex
+	}
+	return -1
+}
+
 func (q *QemuDisk) Sanitize(basedir string) error {
 	validate := func(name string, found string, valid ...string) string {
 		for _, i := range valid {
@@ -134,111 +141,3 @@ func (q *QemuDisk) serial() string {
 	}
 	return s
 }
-
-// args - return a list of strings to pass to qemu
-/*
-func (q *QemuDisk) args(attachIndex int, bootIndex int) []string {
-	driver := ""
-	ssd := "ssd"
-	driveID := fmt.Sprintf("drive%d", getNextQemuIndex("drive"))
-
-	switch q.Attach {
-	case "virtio":
-		driver = "virtio-blk"
-	case "ide":
-		driver = "ide-hd"
-		if q.Type == "cdrom" {
-			driver = "ide-cd"
-		}
-	case "usb":
-		driver = "usb-storage"
-	case "scsi":
-		driver = "scsi-hd"
-		if q.Type == "cdrom" {
-			driver = "scsi-cd"
-		}
-	default:
-		driver = q.Attach
-	}
-
-	driveopts := []string{
-		"file=" + q.File,
-		"id=" + driveID,
-		"if=none",
-		"format=" + q.Format,
-		"aio=threads",  // use host threadpool for submitting/completing IO
-		"cache=unsafe", // allows guest writes to return after submitting to qemu
-		// significantly speeds up IO at the cost of data loss
-		// if QEMU crashes
-		"discard=unmap",       // unmap block in disk when guest issues trim/discard
-		"detect-zeroes=unmap", // unmap block in disk when guest issues writes of zeroes
-	}
-
-	devopts := []string{
-		driver,
-		"drive=" + driveID,
-		"serial=" + q.serial(),
-	}
-
-	if q.ReadOnly || q.Type == "cdrom" {
-		driveopts = append(driveopts, "readonly=on")
-	}
-
-	if q.Type == "cdrom" {
-		if q.Attach == "virtio" {
-			driveopts = append(driveopts, "media=cdrom")
-		}
-	}
-
-	if q.Attach == "virtio" {
-		// only virtio-pci devices can use .addr property
-		if q.BusAddr != "" {
-			devopts = append(devopts, fmt.Sprintf("addr=%s", q.BusAddr))
-		}
-		devopts = append(devopts, "bus=pcie.0")
-	}
-
-	if q.BootIndex >= 0 {
-		devopts = append(devopts, fmt.Sprintf("bootindex=%d", q.BootIndex))
-	} else if bootIndex >= 0 {
-		devopts = append(devopts, fmt.Sprintf("bootindex=%d", bootIndex))
-	}
-
-	// Set a reasonable default rotation_rate for disks by Attach/Type
-	if q.Attach == "scsi" || q.Attach == "ide" {
-		rate := ""
-		if q.Type == ssd {
-			rate = "1" // Indicates to Linux this is an SSD
-		} else if q.Type == "hdd" {
-			if q.Attach == "scsi" {
-				rate = "15000"
-			} else if q.Attach == "ide" {
-				rate = "7200"
-			}
-		}
-		if rate != "" {
-			devopts = append(devopts, fmt.Sprintf("rotation_rate="+rate))
-		}
-	}
-
-	// sort out what bus to use
-	if q.Attach == "ide" {
-		// ich9-ahci is a SATA controller with 6 ports
-		if attachIndex > 6 {
-			log.Fatalf("Can't have more than 6 ide disks. (found %d)", attachIndex)
-		}
-		devopts = append(devopts, fmt.Sprintf("bus=ide.%d", attachIndex))
-	}
-
-	if q.BlockSize != 0 {
-		devopts = append(devopts,
-			fmt.Sprintf("logical_block_size=%d", q.BlockSize),
-			fmt.Sprintf("physical_block_size=%d", q.BlockSize))
-	}
-
-	return []string{
-		"-drive", strings.Join(driveopts, ","),
-		"-device", strings.Join(devopts, ","),
-	}
-}
-*/

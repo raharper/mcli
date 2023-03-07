@@ -193,7 +193,7 @@ func (qd *QemuDisk) QBlockDevice(qti *qcli.QemuTypeIndex) (qcli.BlockDevice, err
 		blk.BlockSize = 512
 	}
 	if qd.BootIndex != nil {
-		blk.BootIndex = *qd.BootIndex
+		blk.BootIndex = qd.BootIndexValue()
 	} else {
 		blk.BootIndex = qti.NextBootIndex()
 	}
@@ -219,7 +219,7 @@ func (qd *QemuDisk) QBlockDevice(qti *qcli.QemuTypeIndex) (qcli.BlockDevice, err
 		blk.SCSI = true
 		// FIXME: we should scan disks for buses, create buses, then
 		// walk disks a second time to configure bus= for each device
-		blk.Bus = fmt.Sprintf("scsi0.%d", qti.Next("scsi-bus"))
+		blk.Bus = "scsi0.0" // this is the default scsi bus
 	case "nvme":
 		blk.Driver = qcli.NVME
 	case "virtio":
@@ -264,7 +264,7 @@ func (nd NicDef) QNetDevice(qti *qcli.QemuTypeIndex) (qcli.NetDevice, error) {
 		ndev.MACAddress = mac
 	}
 	if nd.BootIndex != nil {
-		ndev.BootIndex = *nd.BootIndex
+		ndev.BootIndex = nd.BootIndexValue()
 	} else {
 		ndev.BootIndex = qti.NextBootIndex()
 	}
@@ -314,22 +314,29 @@ func GenerateQConfig(runDir, sockDir string, v VMDef) (*qcli.Config, error) {
 		cdromPath = filepath.Join(cwd, v.Cdrom)
 	}
 
+	qti := qcli.NewQemuTypeIndex()
+
+	log.Infof("before cdrom num disks: %d", len(v.Disks))
 	if v.Cdrom != "" {
-		bootindex := 0
 		qd := QemuDisk{
-			File:      cdromPath,
-			Format:    "raw",
-			Attach:    "virtio",
-			Type:      "cdrom",
-			ReadOnly:  true,
-			BootIndex: &bootindex,
+			File:     cdromPath,
+			Format:   "raw",
+			Attach:   "virtio",
+			Type:     "cdrom",
+			ReadOnly: true,
+		}
+		if v.Boot == "cdrom" {
+			bootindex := qti.NextBootIndex()
+			log.Infof("Boot from cdrom requested: bootindex=%d", bootindex)
+			qd.BootIndex = &bootindex
 		}
 		v.Disks = append(v.Disks, qd)
 	}
+	log.Infof("after cdrom num disks: %d", len(v.Disks))
 
-	qti := qcli.NewQemuTypeIndex()
-
-	v.AdjustBootIndicies(qti)
+	if err := v.AdjustBootIndicies(qti); err != nil {
+		return c, err
+	}
 
 	busses := make(map[string]bool)
 	for i := range v.Disks {
