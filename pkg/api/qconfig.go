@@ -2,11 +2,12 @@ package api
 
 import (
 	"fmt"
-	"mcli-v2/pkg/qcli"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/raharper/qcli"
 
 	log "github.com/sirupsen/logrus"
 )

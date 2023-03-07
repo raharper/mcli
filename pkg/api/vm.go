@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"mcli-v2/pkg/qcli"
+	"github.com/raharper/qcli"
 
 	"github.com/apex/log"
 )
