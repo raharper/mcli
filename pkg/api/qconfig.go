@@ -326,7 +326,7 @@ func GenerateQConfig(runDir, sockDir string, v VMDef) (*qcli.Config, error) {
 			ReadOnly: true,
 		}
 		if v.Boot == "cdrom" {
-			bootindex := qti.NextBootIndex()
+			bootindex := 0
 			log.Infof("Boot from cdrom requested: bootindex=%d", bootindex)
 			qd.BootIndex = &bootindex
 		}
