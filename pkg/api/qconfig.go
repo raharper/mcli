@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/raharper/qcli"
@@ -192,10 +193,12 @@ func (qd *QemuDisk) QBlockDevice(qti *qcli.QemuTypeIndex) (qcli.BlockDevice, err
 	if blk.BlockSize == 0 {
 		blk.BlockSize = 512
 	}
-	if qd.BootIndex != nil {
-		blk.BootIndex = qd.BootIndexValue()
-	} else {
-		blk.BootIndex = qti.NextBootIndex()
+	if qd.BootIndex != "" {
+		bootindex, err := strconv.Atoi(qd.BootIndex)
+		if err != nil {
+			return blk, fmt.Errorf("Failed parsing disk %s BootIndex '%s': %s", qd.File, qd.BootIndex, err)
+		}
+		blk.BootIndex = bootindex
 	}
 
 	if qd.Format != "" {
@@ -263,10 +266,12 @@ func (nd NicDef) QNetDevice(qti *qcli.QemuTypeIndex) (qcli.NetDevice, error) {
 		}
 		ndev.MACAddress = mac
 	}
-	if nd.BootIndex != nil {
-		ndev.BootIndex = nd.BootIndexValue()
-	} else {
-		ndev.BootIndex = qti.NextBootIndex()
+	if nd.BootIndex != "" {
+		bootindex, err := strconv.Atoi(nd.BootIndex)
+		if err != nil {
+			return qcli.NetDevice{}, fmt.Errorf("Failed parsing nic %s BootIndex '%s': %s", nd.Device, nd.BootIndex, err)
+		}
+		ndev.BootIndex = bootindex
 	}
 
 	return ndev, nil
@@ -316,7 +321,6 @@ func GenerateQConfig(runDir, sockDir string, v VMDef) (*qcli.Config, error) {
 
 	qti := qcli.NewQemuTypeIndex()
 
-	log.Infof("before cdrom num disks: %d", len(v.Disks))
 	if v.Cdrom != "" {
 		qd := QemuDisk{
 			File:     cdromPath,
@@ -326,13 +330,11 @@ func GenerateQConfig(runDir, sockDir string, v VMDef) (*qcli.Config, error) {
 			ReadOnly: true,
 		}
 		if v.Boot == "cdrom" {
-			bootindex := 0
-			log.Infof("Boot from cdrom requested: bootindex=%d", bootindex)
-			qd.BootIndex = &bootindex
+			qd.BootIndex = "0"
+			log.Infof("Boot from cdrom requested: bootindex=%s", qd.BootIndex)
 		}
 		v.Disks = append(v.Disks, qd)
 	}
-	log.Infof("after cdrom num disks: %d", len(v.Disks))
 
 	if err := v.AdjustBootIndicies(qti); err != nil {
 		return c, err

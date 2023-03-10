@@ -23,12 +23,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/raharper/qcli"
 
-	"github.com/apex/log"
+	log "github.com/sirupsen/logrus"
 )
 
 type VMState int
@@ -74,66 +75,92 @@ type VMDef struct {
 	Gui        bool       `yaml:"gui"`
 }
 
-func (v *VMDef) adjustDiskBootIdx(qti *qcli.QemuTypeIndex) ([]int, error) {
-	allocated := []int{}
+func (v *VMDef) adjustDiskBootIdx(qti *qcli.QemuTypeIndex) ([]string, error) {
+	allocated := []string{}
+	// do this in two loops, first, if BootIndex is set in the disk, allocate
+	// the bit in qti, next, for any disk without BootIndex set, allocate new
+	// bootindex from qti
+
+	// mark any configured
 	for n := range v.Disks {
 		disk := v.Disks[n]
-		log.Debugf("disk: adjusting bootindex on %s", disk.File)
-		if disk.BootIndex == nil {
-			idx := new(int)
-			*idx = qti.NextBootIndex()
-			disk.BootIndex = idx
-			val := disk.BootIndexValue()
-			log.Debugf("disk: allocating new index %d on %s", val, disk.File)
-		} else {
-			val := disk.BootIndexValue()
-			log.Debugf("disk: setting configured index %d on %s", val, disk.File)
-			if err := qti.SetBootIndex(val); err != nil {
-				return []int{}, fmt.Errorf("Failed to set BootIndex %d on disk %s: %s", disk.BootIndexValue(), disk.File, err)
+		if disk.BootIndex != "" {
+			log.Infof("disk: setting configured index %s on %s", disk.BootIndex, disk.File)
+			bootindex, err := strconv.Atoi(disk.BootIndex)
+			if err != nil {
+				return allocated, fmt.Errorf("Failed to parse disk %s BootIndex '%s' as integer: %s", disk.File, disk.BootIndex, err)
 			}
+			if err := qti.SetBootIndex(bootindex); err != nil {
+				return allocated, fmt.Errorf("Failed to set BootIndex %s on disk %s: %s", disk.BootIndex, disk.File, err)
+			}
+			allocated = append(allocated, disk.BootIndex)
 		}
-		allocated = append(allocated, disk.BootIndexValue())
 	}
+
+	// for any disks without a BootIndex, allocate one
+	for n := range v.Disks {
+		disk := v.Disks[n]
+		if disk.BootIndex == "" {
+			idx := qti.NextBootIndex()
+			disk.BootIndex = fmt.Sprintf("%d", idx)
+			log.Infof("disk: allocating new index %d on %s", idx, disk.File)
+			allocated = append(allocated, disk.BootIndex)
+			v.Disks[n] = disk
+		}
+	}
+
 	return allocated, nil
 }
 
-func (v *VMDef) adjustNetBootIdx(qti *qcli.QemuTypeIndex) ([]int, error) {
-	allocated := []int{}
+func (v *VMDef) adjustNetBootIdx(qti *qcli.QemuTypeIndex) ([]string, error) {
+	allocated := []string{}
+
+	// do this in two loops, first, if BootIndex is set in the nic, allocate
+	// the bit in qti, next, for any nic without BootIndex set, allocate new
+	// bootindex from qti
+
+	// mark any configured
 	for n := range v.Nics {
 		nic := v.Nics[n]
-		log.Debugf("nic: adjusting bootindex on %s", nic.ID)
-		if nic.BootIndex == nil {
-			idx := new(int)
-			*idx = qti.NextBootIndex()
-			nic.BootIndex = idx
-			val := nic.BootIndexValue()
-			log.Debugf("nic: allocating new index %d on %s", val, nic.ID)
-		} else {
-			val := nic.BootIndexValue()
-			log.Debugf("nic: setting configured index %d on %s", val, nic.ID)
-			if err := qti.SetBootIndex(val); err != nil {
-				return []int{}, fmt.Errorf("Failed to set BootIndex %d on nic %s: %s", nic.BootIndexValue(), nic.ID, err)
+		if nic.BootIndex != "" {
+			log.Infof("nic: setting configured index %s on %s", nic.BootIndex, nic.ID)
+			bootindex, err := strconv.Atoi(nic.BootIndex)
+			if err != nil {
+				return allocated, fmt.Errorf("Failed to parse nic %s BootIndex '%s' as integer: %s", nic.ID, nic.BootIndex, err)
 			}
+			if err := qti.SetBootIndex(bootindex); err != nil {
+				return allocated, fmt.Errorf("Failed to set BootIndex %s on nic %s: %s", nic.BootIndex, nic.ID, err)
+			}
+			allocated = append(allocated, nic.BootIndex)
 		}
-		allocated = append(allocated, nic.BootIndexValue())
 	}
+
+	// for any nics without a BootIndex, allocate one
+	for n := range v.Nics {
+		nic := v.Nics[n]
+		if nic.BootIndex == "" {
+			idx := qti.NextBootIndex()
+			nic.BootIndex = fmt.Sprintf("%d", idx)
+			log.Infof("nic: allocating new index %d on %s", idx, nic.ID)
+			allocated = append(allocated, nic.BootIndex)
+			v.Nics[n] = nic
+		}
+	}
+
 	return allocated, nil
 }
 
 func (v *VMDef) AdjustBootIndicies(qti *qcli.QemuTypeIndex) error {
-	allocated := []int{}
 
-	diskBoot, err := v.adjustDiskBootIdx(qti)
+	_, err := v.adjustDiskBootIdx(qti)
 	if err != nil {
 		return fmt.Errorf("Error setting disk bootindex values: %s", err)
 	}
-	allocated = append(allocated, diskBoot...)
 
-	netBoot, err := v.adjustNetBootIdx(qti)
+	_, err = v.adjustNetBootIdx(qti)
 	if err != nil {
 		return fmt.Errorf("Error setting nic bootindex values: %s", err)
 	}
-	allocated = append(allocated, netBoot...)
 
 	return nil
 }

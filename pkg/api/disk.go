@@ -49,15 +49,8 @@ type QemuDisk struct {
 	Type      string   `yaml:"type"`
 	BlockSize int      `yaml:"blocksize,omitempty"`
 	BusAddr   string   `yaml:"addr,omitempty"`
-	BootIndex *int     `yaml:"bootindex,omitempty"`
+	BootIndex string   `yaml:"bootindex,omitempty"`
 	ReadOnly  bool     `yaml:"read-only,omitempty"`
-}
-
-func (q *QemuDisk) BootIndexValue() int {
-	if q.BootIndex != nil {
-		return *q.BootIndex
-	}
-	return -1
 }
 
 func (q *QemuDisk) Sanitize(basedir string) error {
