@@ -38,14 +38,7 @@ type NicDef struct {
 	ifname    string     `yaml:"ifname",omitempty`
 	Network   string     `yaml:"network",omitempty`
 	Ports     []PortRule `yaml:"ports",omitempty`
-	BootIndex *int       `yaml:"bootindex,omitempty`
-}
-
-func (n *NicDef) BootIndexValue() int {
-	if n.BootIndex != nil {
-		return *n.BootIndex
-	}
-	return -1
+	BootIndex string     `yaml:"bootindex,omitempty`
 }
 
 type VMNic struct {
@@ -57,7 +50,7 @@ type VMNic struct {
 	NetIFName  string
 	NetType    string
 	NetAddr    string
-	BootIndex  int
+	BootIndex  string
 	Ports      []PortRule
 }
 
