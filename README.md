@@ -15,10 +15,14 @@ newgrp kvm  # or logout and login, run 'groups' command to confirm
 
 ## Build mcli
 
+Find the latest release here: https://github.com/raharper/mcli/releases/latest
+And select the tar.gz link, for example:
+
 ```
-wget https://github.com/raharper/mcli/archive/refs/tags/v0.0.2.tar.gz
-tar xzf v0.0.2
-cd mcli-0.0.2
+LATEST="https://github.com/raharper/mcli/archive/refs/tags/v0.0.4.tar.gz"
+wget "$LATEST"
+tar xzf v0.0.4
+cd mcli-0.0.4
 make
 ```
 
