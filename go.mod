@@ -10,12 +10,11 @@ require (
 	github.com/go-resty/resty/v2 v2.7.0
 	github.com/lxc/lxd v0.0.0-20221130220346-2c77027b7a5e
 	github.com/msoap/byline v1.1.1
-	github.com/raharper/qcli v0.0.2
+	github.com/raharper/qcli v0.0.6
 	github.com/rodaine/table v1.1.0
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.14.0
-	github.com/yourbasic/bit v0.0.0-20180313074424-45a4409f4082
 	golang.org/x/sys v0.2.0
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -52,6 +51,7 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.4.1 // indirect
 	github.com/ugorji/go/codec v1.2.7 // indirect
+	github.com/yourbasic/bit v0.0.0-20180313074424-45a4409f4082 // indirect
 	golang.org/x/crypto v0.3.0 // indirect
 	golang.org/x/net v0.2.0 // indirect
 	golang.org/x/term v0.2.0 // indirect

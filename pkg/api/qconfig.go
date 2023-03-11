@@ -198,7 +198,7 @@ func (qd *QemuDisk) QBlockDevice(qti *qcli.QemuTypeIndex) (qcli.BlockDevice, err
 		if err != nil {
 			return blk, fmt.Errorf("Failed parsing disk %s BootIndex '%s': %s", qd.File, qd.BootIndex, err)
 		}
-		blk.BootIndex = bootindex
+		blk.BootIndex = fmt.Sprintf("%d", bootindex)
 	}
 
 	if qd.Format != "" {
@@ -238,6 +238,7 @@ func (qd *QemuDisk) QBlockDevice(qti *qcli.QemuTypeIndex) (qcli.BlockDevice, err
 		} else {
 			blk.Driver = qcli.IDEHardDisk
 		}
+		blk.Bus = "ide.0"
 	case "usb":
 		blk.Driver = qcli.USBStorage
 	default:
@@ -271,7 +272,7 @@ func (nd NicDef) QNetDevice(qti *qcli.QemuTypeIndex) (qcli.NetDevice, error) {
 		if err != nil {
 			return qcli.NetDevice{}, fmt.Errorf("Failed parsing nic %s BootIndex '%s': %s", nd.Device, nd.BootIndex, err)
 		}
-		ndev.BootIndex = bootindex
+		ndev.BootIndex = fmt.Sprintf("%d", bootindex)
 	}
 
 	return ndev, nil
@@ -325,7 +326,7 @@ func GenerateQConfig(runDir, sockDir string, v VMDef) (*qcli.Config, error) {
 		qd := QemuDisk{
 			File:     cdromPath,
 			Format:   "raw",
-			Attach:   "virtio",
+			Attach:   "ide",
 			Type:     "cdrom",
 			ReadOnly: true,
 		}
@@ -371,7 +372,11 @@ func GenerateQConfig(runDir, sockDir string, v VMDef) (*qcli.Config, error) {
 				c.SCSIControllerDevices = append(c.SCSIControllerDevices, scsiCon)
 			}
 			if disk.Attach == "ide" {
-				log.Infof("FIXME: Attaching an IDE Controller...")
+				ideCon := qcli.IDEControllerDevice{
+					Driver: qcli.ICH9AHCIController,
+					ID:     fmt.Sprintf("ide%d", qti.Next("ide")),
+				}
+				c.IDEControllerDevices = append(c.IDEControllerDevices, ideCon)
 			}
 		}
 	}
